@@ -20,7 +20,7 @@
 - มี [TypeScript SDK 0.5](sdk/typescript/README.md) พร้อม typed manifest, `cli.commands`, `launcher` และ async API ตรวจ/pack ด้วย Node.js โดยตรง ไม่ต้องมี Python
 - รอบ regression ล่าสุดบน Linux พร้อม dependencies ของ TUF ผ่าน 131 รายการ และชุด publisher/provisioning เพิ่มเติมผ่าน ดู [สถานะ hardening](PRODUCTION-READINESS.md); ผล release SDK แยกอยู่ใน [ผลทดสอบ SDK](SDK-TEST-RESULTS.md)
 - มี **ISO installer แบบ CLI สำหรับ x86_64 / UEFI** แล้ว ตั้งบัญชีใหม่และติดตั้งลงดิสก์ได้ ดู [คู่มือติดตั้ง](INSTALL.md) และ [ผลทดสอบตัวติดตั้ง](INSTALLER-TEST-RESULTS.md) ยังไม่ได้ทดสอบบนเครื่องจริง
-- ซอร์สมี [TUF repository และ publisher](PUBLISHING.md), `dev trust`, signed install, `dev update`/`dev fetch`, `dev upgrade ชื่อแพ็กเกจ`, `dev rollback ชื่อแพ็กเกจ` และ `dev system-deploy` ที่ stage ระบบรุ่นใหม่ลง inactive slot พร้อม trial boot หนึ่งครั้ง (ทดสอบระดับ host fixture แล้ว ยังไม่มี production hosting, dependency resolver, health confirmation หรือ kernel/base-system rollback)
+- ซอร์สมี [TUF repository และ publisher](PUBLISHING.md), `dev trust`, signed install, `dev update`/`dev fetch`, `dev upgrade ชื่อแพ็กเกจ`, `dev rollback ชื่อแพ็กเกจ` และ `dev system-deploy` ที่ stage ระบบรุ่นใหม่ลง inactive slot พร้อม trial boot หนึ่งครั้ง (ทดสอบระดับ host fixture แล้ว) — repository ฝากบน GitHub Releases ได้ด้วย `github-upload` และ client ดึงจาก `releases/latest/download` ได้ (ทดสอบสดผ่านครบ ดู [PUBLISHING.md](PUBLISHING.md)) ยังไม่มี dependency resolver, health confirmation หรือ kernel/base-system rollback
 
 ## เปิด Dev OS ที่ build แล้ว
 

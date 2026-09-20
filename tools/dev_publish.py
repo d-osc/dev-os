@@ -2,7 +2,8 @@
 """Offline TUF publisher for Dev OS. Run on Linux/WSL with encrypted signing keys.
 
 Public generations are immutable. Switching `current` is an atomic symlink rename.
-No network upload, repository deployment, or production trust provisioning occurs.
+Signing never touches the network; `github-upload` is a separate command that
+uploads already-signed generation files as GitHub release assets through gh.
 """
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -11,7 +12,9 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import uuid
@@ -25,6 +28,10 @@ from tuf.api.metadata import Metadata, Root, Targets, Snapshot, Timestamp, MetaF
 SPEC = importlib.util.spec_from_file_location('dev_publisher_core', Path(__file__).with_name('dev.py'))
 dev = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(dev)
+REPOSITORY_SPEC = importlib.util.spec_from_file_location(
+    'dev_repository_core', Path(__file__).with_name('dev_repository.py'))
+repository_core = importlib.util.module_from_spec(REPOSITORY_SPEC)
+REPOSITORY_SPEC.loader.exec_module(repository_core)
 COUNTS = {'root': 3, 'targets': 3, 'snapshot': 1, 'timestamp': 1}
 
 
@@ -330,18 +337,146 @@ def rotate(keys, role, password):
     return publish(keys, [], password)
 
 
+def generation_files(public):
+    """Every file of the current immutable generation, as {relative path: file}."""
+    public = Path(public).resolve()
+    current = public / 'current'
+    dev.require(current.is_symlink(), 'Published repository has no current generation')
+    pointer = os.readlink(current)
+    dev.require(re.fullmatch(r'generations/[0-9]+', pointer) and (public / pointer).is_dir(),
+                'Invalid published generation pointer')
+    generation = public / pointer
+    files = {}
+    for base in ('metadata', 'targets'):
+        directory = generation / base
+        dev.require(directory.is_dir(), 'Incomplete published generation')
+        for path in sorted(directory.rglob('*')):
+            if path.is_file():
+                files[path.relative_to(generation).as_posix()] = path
+    dev.require(len(files) >= 4, 'Published generation is missing repository files')
+    return files
+
+
+def gh_executable():
+    """gh or its Windows interop name gh.exe; empty when unavailable."""
+    for name in ('gh', 'gh.exe'):
+        if shutil.which(name):
+            return name
+    return None
+
+
+def windows_path(path):
+    completed = subprocess.run(['wslpath', '-w', str(path)], capture_output=True, text=True)
+    if completed.returncode != 0:
+        raise ValueError('Could not translate the staging path for gh.exe')
+    return completed.stdout.strip()
+
+
+def run_gh(*command):
+    executable = gh_executable()
+    if not executable:
+        raise ValueError('The gh command is required for GitHub uploads')
+    arguments = [executable, *command]
+    if executable.endswith('.exe'):
+        arguments = [executable] + [windows_path(item) if item.startswith('/') else item
+                                    for item in command]
+    try:
+        return subprocess.run(arguments, check=True, capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise ValueError('The gh command is required for GitHub uploads') from exc
+    except subprocess.CalledProcessError as exc:
+        raise ValueError('gh failed: ' + (exc.stderr or exc.stdout).strip()[:500]) from exc
+
+
+def release_asset_names(repository, tag):
+    completed = subprocess.run([gh_executable(), 'release', 'view', tag, '--repo', repository,
+                                '--json', 'assets', '--jq', '.assets[].name'],
+                               capture_output=True, text=True)
+    if completed.returncode != 0:
+        message = (completed.stderr or completed.stdout).strip()
+        if 'not found' in message.lower():
+            return None
+        raise ValueError('Could not inspect the GitHub release: ' + message[:300])
+    return {name.strip() for name in completed.stdout.splitlines() if name.strip()}
+
+
+def github_upload(public, repository, tag, *, clobber=False, prerelease=False):
+    """Upload the current signed generation to one GitHub release.
+
+    Files keep lossless flat asset names ('/' encoded as '__'). Assets are never
+    replaced unless --clobber is given; publishing a new generation normally
+    uses a new tag so clients pinned to releases/latest/download always see
+    complete immutable metadata. Upload uses the operator's gh credentials and
+    reads no signing material.
+    """
+    dev.require(re.fullmatch(r'[A-Za-z0-9._-]+/[A-Za-z0-9._-]+', repository),
+                'Expected a GitHub OWNER/REPOSITORY name')
+    dev.require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+-]{0,99}', tag), 'Invalid release tag')
+    run_gh('auth', 'status')
+    files = generation_files(public)
+    assets = {repository_core.github_asset_name(relative): path for relative, path in files.items()}
+    dev.require(len(assets) == len(files), 'Asset name collision in published generation')
+    existing = release_asset_names(repository, tag)
+    if existing is None:
+        arguments = ['release', 'create', tag, '--repo', repository, '--title', 'Dev OS repository ' + tag,
+                     '--notes', 'Signed TUF repository generation assets.']
+        if prerelease:
+            arguments.append('--prerelease')
+        run_gh(*arguments)
+    else:
+        dev.require(clobber, 'Release already exists; pass --clobber to replace its assets')
+    # gh.exe (Windows interop) cannot read Linux filesystem paths: stage on the
+    # Windows drive instead, and let run_gh translate the staged paths.
+    staging_parent = None
+    if gh_executable().endswith('.exe'):
+        dev.require(Path('/mnt/c').is_dir(), 'gh.exe interop needs the Windows drive at /mnt/c')
+        staging_parent = Path('/mnt/c/Users') / Path.home().name / 'AppData/Local/Temp'
+        dev.require(staging_parent.is_dir(), 'No writable Windows staging directory for gh.exe')
+    with tempfile.TemporaryDirectory(prefix='devos-github-upload-', dir=staging_parent) as temporary:
+        staged = Path(temporary)
+        for name, path in assets.items():
+            destination = staged / name
+            try:
+                os.link(path, destination)
+            except OSError:
+                shutil.copyfile(path, destination)
+        arguments = ['release', 'upload', tag, '--repo', repository]
+        if clobber:
+            arguments.append('--clobber')
+        run_gh(*arguments, *[str(staged / name) for name in sorted(assets)])
+    published = release_asset_names(repository, tag)
+    dev.require(published == set(assets), 'GitHub release assets do not match the generation')
+    print(f"Uploaded {len(assets)} repository files to {repository} release {tag}")
+    print('Client URLs (metadata and targets):')
+    print(f"  https://github.com/{repository}/releases/download/{tag}/")
+    print(f"  https://github.com/{repository}/releases/latest/download/  (newest non-prerelease release)")
+    return sorted(assets)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--keys', type=Path, required=True)
-    parser.add_argument('--passphrase-file', type=Path, required=True)
+    parser.add_argument('--keys', type=Path)
+    parser.add_argument('--passphrase-file', type=Path)
     commands = parser.add_subparsers(dest='command', required=True)
     p = commands.add_parser('init'); p.add_argument('--public', type=Path, required=True)
     p = commands.add_parser('publish'); p.add_argument('archives', nargs='*', type=Path)
     p.add_argument('--system-release', type=Path)
     p = commands.add_parser('rotate'); p.add_argument('role', choices=list(COUNTS))
     p = commands.add_parser('revoke'); p.add_argument('name'); p.add_argument('version')
+    p = commands.add_parser('github-upload', help='upload the current signed generation to a GitHub release (uses gh)')
+    p.add_argument('--public', type=Path, required=True)
+    p.add_argument('--repository', required=True, help='GitHub OWNER/REPOSITORY')
+    p.add_argument('--tag', required=True)
+    p.add_argument('--clobber', action='store_true', help='replace assets of an existing release')
+    p.add_argument('--prerelease', action='store_true')
     args = parser.parse_args()
     try:
+        if args.command == 'github-upload':
+            github_upload(args.public, args.repository, args.tag,
+                          clobber=args.clobber, prerelease=args.prerelease)
+            return 0
+        dev.require(args.keys is not None and args.passphrase_file is not None,
+                    '--keys and --passphrase-file are required for ' + args.command)
         dev.require(args.passphrase_file.stat().st_mode & 0o077 == 0,
                     'Passphrase file must have mode 0600')
         password = args.passphrase_file.read_bytes().rstrip(b'\r\n')

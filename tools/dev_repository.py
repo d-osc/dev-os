@@ -23,6 +23,64 @@ def validate_url(value, allow_loopback=False):
     return value.rstrip('/') + '/'
 
 
+GITHUB_RELEASE = re.compile(
+    r'(https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/releases/(?:download/[A-Za-z0-9._+-]+|latest/download)/)')
+
+
+def github_release_base(value):
+    """Return the normalized GitHub release asset base URL, or None."""
+    if not isinstance(value, str):
+        return None
+    match = GITHUB_RELEASE.match(value.rstrip('/') + '/')
+    return match.group(1) if match else None
+
+
+def github_asset_name(path):
+    """Encode one repository path as a flat GitHub release asset name.
+
+    GitHub release assets have no directories, so '/' becomes '__'. A path that
+    already contains '__' is rejected on both ends to keep the mapping lossless.
+    """
+    if not isinstance(path, str) or not path or '__' in path or '\\' in path:
+        raise ValueError('Repository path cannot be encoded as a GitHub release asset: ' + repr(path))
+    if any(part in ('', '.', '..') for part in path.split('/')):
+        raise ValueError('Repository path cannot be encoded as a GitHub release asset: ' + repr(path))
+    name = path.replace('/', '__')
+    if not re.fullmatch(r'[A-Za-z0-9._+-]+', name):
+        raise ValueError('Repository path cannot be encoded as a GitHub release asset: ' + repr(path))
+    return name
+
+
+METADATA_ASSET = re.compile(r'(?:[0-9]+\.)?(?:root|targets|snapshot|timestamp)\.json')
+
+
+def github_asset_url(base, path):
+    """Map one TUF metadata or target path to its flat release asset URL.
+
+    One GitHub release hosts both subtrees of a repository generation, so the
+    upload keeps the generation-relative prefix: top-level metadata roles map
+    to metadata__<name> and every target path to targets__<encoded path>.
+    Anything else fails closed when fetched.
+    """
+    if METADATA_ASSET.fullmatch(path):
+        return base + 'metadata__' + github_asset_name(path)
+    return base + 'targets__' + github_asset_name(path)
+
+
+def _github_fetcher(bases):
+    """A TUF fetcher mapping repository paths to flat GitHub release assets."""
+    from tuf.ngclient.urllib3_fetcher import Urllib3Fetcher
+
+    class EncodedGithubFetcher(Urllib3Fetcher):
+        def _fetch(self, url):
+            for base in bases:
+                if url.startswith(base):
+                    return super()._fetch(github_asset_url(base, url[len(base):]))
+            return super()._fetch(url)
+
+    return EncodedGithubFetcher()
+
+
 class Repository:
     def __init__(self, root, dev):
         try:
@@ -53,11 +111,14 @@ class Repository:
             previous = json.loads(self.clock.read_text())['last_refresh']
             dev.require(type(previous) is int and self.started >= previous,
                         'System clock moved backwards; repository refresh refused')
+        bases = [base for base in (github_release_base(metadata_url), github_release_base(targets_url))
+                 if base is not None]
         self.updater = Updater(str(self.state / 'metadata'), metadata_url,
                                str(self.state / 'targets'), targets_url,
                                config=UpdaterConfig(app_user_agent='DevOS/0.1',
                                                     max_delegations=16),
-                               bootstrap=anchor.read_bytes())
+                               bootstrap=anchor.read_bytes(),
+                               fetcher=_github_fetcher(bases) if bases else None)
         self.anchor_hash = hashlib.sha256(anchor.read_bytes()).hexdigest()
         self.packages = None
 

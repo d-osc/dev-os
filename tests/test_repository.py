@@ -223,5 +223,42 @@ class RepositoryURLTests(unittest.TestCase):
         self.assertEqual(repo.validate_url('https://example.org'), 'https://example.org/')
 
 
+class GithubAssets(unittest.TestCase):
+    def test_release_base_detection(self):
+        latest = 'https://github.com/d-osc/dev-os/releases/latest/download/'
+        tagged = 'https://github.com/d-osc/dev-os/releases/download/tuf-20260920/'
+        self.assertEqual(repo.github_release_base(latest), latest)
+        self.assertEqual(repo.github_release_base(tagged.rstrip('/')), tagged)
+        self.assertIsNone(repo.github_release_base('https://packages.example.org/current/metadata/'))
+        self.assertIsNone(repo.github_release_base('https://github.com/d-osc/dev-os/releases/'))
+        self.assertIsNone(repo.github_release_base('https://example.org/github.com/a/b/releases/latest/download/'))
+
+    def test_asset_names_are_flat_and_lossless(self):
+        self.assertEqual(repo.github_asset_name('metadata/root.json'), 'metadata__root.json')
+        self.assertEqual(repo.github_asset_name('targets/packages/hello/1.0.0.dpk'),
+                         'targets__packages__hello__1.0.0.dpk')
+        for bad in ('a__b.json', '', 'a b', 'dir/a__b', None, 'a/../escape'):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    repo.github_asset_name(bad)
+
+    def test_asset_urls_route_metadata_roles_and_target_paths(self):
+        base = 'https://github.com/o/r/releases/latest/download/'
+        for path in ('root.json', '2.root.json', 'timestamp.json', 'targets.json',
+                     '15.snapshot.json'):
+            with self.subTest(path=path):
+                self.assertEqual(repo.github_asset_url(base, path),
+                                 base + 'metadata__' + path)
+        for path in ('index.json', 'system-index.json', 'packages/hello/1.0.0.dpk',
+                     'systems/x86_64/0.1.2/bzImage', 'packages/targets.json'):
+            with self.subTest(path=path):
+                self.assertEqual(repo.github_asset_url(base, path),
+                                 base + 'targets__' + path.replace('/', '__'))
+        for bad in ('a b',):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    repo.github_asset_url(base, bad)
+
+
 if __name__ == '__main__':
     unittest.main()

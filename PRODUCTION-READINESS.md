@@ -78,7 +78,7 @@ integration. The recorded core hash predates the additional `dev trust` CLI comm
 | Gate | Required evidence | Current state |
 | --- | --- | --- |
 | Crash-safe package operations | Durable transaction journal; kill/power interruption tests at each commit boundary; restart recovery without losing user changes | All four operations implemented; earlier 17 cuts plus 12 signed candidate cuts and real ext4 exhaustion pass; physical storage checks pending |
-| Trusted distribution | Signed packages and release metadata, trust/key rotation and revocation policy, tamper and stale-metadata tests | Local publisher/provisioning/strict install and adversarial tests pass; production custody/hosting and system-release signing pending |
+| Trusted distribution | Signed packages and release metadata, trust/key rotation and revocation policy, tamper and stale-metadata tests | Local publisher/provisioning/strict install and adversarial tests pass; GitHub Releases hosting demonstrated live end to end; operator key custody and system-release signing pending |
 | System servicing | Tested security update delivery for kernel/base system, failed-update rollback, documented recovery media | Signed package upgrade/rollback, repository batch source and explicit set rollback implemented; batch target validation and kernel/base-system rollback pending |
 | Package compatibility | Dependency and ABI policy; target architecture enforcement; representative binaries tested on target | Static checks, dependency consistency and current-index batch resolution tests pass; full target acceptance remains |
 | Permission enforcement | Explicit CLI trust model; sandbox escape review; per-user grants and revocation if persisted; no silent elevation | Incomplete |
@@ -281,3 +281,18 @@ and full 209-test regressions on Linux and Windows. Host fixtures only: no
 in-guest A/B disk acceptance, physical hardware, trial boot, health
 confirmation, watchdog or confirmed-slot switching yet, and the delivered ISO
 predates this source (it also must ship `mkfs.ext4` and `grub-editenv`).
+
+GitHub Releases hosting checkpoint: `dev_publish.py github-upload` uploads a
+signed generation to one GitHub release as flat assets (generation-relative
+paths, `/` encoded `__`, metadata/targets subtree prefixes) through the
+operator's `gh` credentials, verifying the final asset list; the repository
+client transparently maps TUF paths to those assets when the provisioned URLs
+are GitHub release URLs. A live round trip against github.com passed with
+ephemeral keys: publish, upload, fingerprint-pinned `trust` against
+`releases/latest/download`, `update`, `install` and `upgrade` of hello
+0.1.0→1.1.0 — evidence in `out/test-results/github-releases.json`, with the
+publisher/client logic covered by unit tests and the full 212-test
+TUF-enabled regression. Boundaries: assets are public (integrity-only),
+per-release immutability relies on a new tag per generation, GitHub
+availability/retention applies, and real signing-key custody is still the
+operator's to provision.

@@ -54,6 +54,40 @@ removes a package version from current signed targets; retained bytes alone do n
 authorize reinstall/rollback. Clients learn revocation by authenticated refresh.
 Expiration bounds freeze attacks; it does not provide instant global revocation.
 
+## GitHub Releases hosting
+
+`github-upload` publishes the current signed generation to one GitHub release
+through the `gh` CLI using the operator's credentials; it reads no tokens and
+no signing material. Asset names are the generation-relative paths with `/`
+encoded as `__`, and both subtrees coexist on one release: top-level metadata
+roles become `metadata__<name>` assets and targets become
+`targets__<encoded path>` assets. Paths containing `__` are rejected on both
+ends to keep the mapping lossless.
+
+```sh
+python tools/dev_publish.py github-upload --public /srv/devos-repository \
+  --repository OWNER/REPOSITORY --tag tuf-20260920
+```
+
+Use a new tag for every published generation: each release then holds one
+complete immutable set, and clients configured with
+`https://github.com/OWNER/REPOSITORY/releases/latest/download/` as both the
+metadata and targets URL always resolve the newest non-prerelease release.
+`--clobber` is explicitly required to replace the assets of an existing
+release. The upload verifies the final GitHub asset list against the
+generation before reporting success. On WSL without a native gh package the
+command uses `gh.exe` interop and stages uploads on the Windows drive.
+
+Repository content on GitHub is public: TUF authenticates integrity, not
+confidentiality. Releases depend on GitHub availability and retention; keep
+the local public generations so a removed release can be re-published.
+
+A live round trip against github.com passed end to end with ephemeral keys:
+publish, upload, fingerprint-pinned trust, `update`, `install` and `upgrade`
+through `releases/latest/download` (hello 0.1.0 to 1.1.0). Evidence:
+`out/test-results/github-releases.json`. This is host evidence, not an
+in-guest acceptance, and real key custody remains the operator's job.
+
 ## Client provisioning
 
 Obtain the bootstrap root and fingerprint through an independently trusted
