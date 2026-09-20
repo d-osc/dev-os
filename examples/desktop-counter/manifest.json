@@ -1,0 +1,13 @@
+{
+  "manifest_version": 2,
+  "name": "desktop-counter",
+  "display_name": "Dev Counter",
+  "version": "0.1.0",
+  "arch": "all",
+  "description": "Native desktop window with an independent background counter",
+  "launcher": {"name": "Dev Counter", "comment": "Open the counter window", "icon": "opt/apps/desktop-counter/icon.svg", "categories": ["Utility"]},
+  "permissions": ["background", "window", "storage"],
+  "background": {"runtime": "python", "entry_point": "opt/apps/desktop-counter/background.py"},
+  "window": {"type": "desktop", "runtime": "python", "entry_point": "opt/apps/desktop-counter/window.py"},
+  "executables": ["opt/apps/desktop-counter/background.py", "opt/apps/desktop-counter/window.py"]
+}

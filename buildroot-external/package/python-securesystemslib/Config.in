@@ -1,0 +1,7 @@
+config BR2_PACKAGE_PYTHON_SECURESYSTEMSLIB
+	bool "python-securesystemslib"
+	depends on BR2_PACKAGE_PYTHON3
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	select BR2_PACKAGE_PYTHON_CRYPTOGRAPHY
+	help
+	  Pinned verification runtime for Dev OS package repositories.

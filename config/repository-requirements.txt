@@ -1,0 +1,10 @@
+# Host integration test/runtime versions. Target builds must pin their equivalent
+# Buildroot packages and include them in SBOM/CVE checks before an ISO is released.
+tuf==7.0.1
+securesystemslib[crypto]==1.5.1
+urllib3==2.8.0
+cryptography==50.0.1
+cffi==2.1.1
+pycparser==3.0
+packaging==26.3
+pyelftools==0.32

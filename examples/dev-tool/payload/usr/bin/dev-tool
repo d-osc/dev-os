@@ -1,0 +1,6 @@
+#!/bin/sh
+case "${1:-}" in
+    --version) printf '%s\n' 'dev-tool 0.1.0' ;;
+    ''|--help) printf '%s\n' 'Usage: dev-tool [--help|--version]' ;;
+    *) printf '%s\n' 'Unknown option. Try dev-tool --help.' >&2; exit 2 ;;
+esac

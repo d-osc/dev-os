@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+project=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+target=${1:?Target root is required}
+install -D -m 0755 "$project/tools/dev.py" "$target/usr/bin/dev"
+install -D -m 0755 "$project/rootfs-overlay/etc/init.d/S35dev-recover" "$target/etc/init.d/S35dev-recover"
+install -D -m 0644 "$project/tools/dev_runtime.py" "$target/usr/lib/devos/dev_runtime.py"
+install -D -m 0644 "$project/tools/dev_repository.py" "$target/usr/lib/devos/dev_repository.py"
+install -D -m 0644 "$project/tools/dev_compat.py" "$target/usr/lib/devos/dev_compat.py"
+install -D -m 0644 "$project/tools/dev_plan.py" "$target/usr/lib/devos/dev_plan.py"
+install -D -m 0644 "$project/tools/dev_boot.py" "$target/usr/lib/devos/dev_boot.py"
+install -D -m 0644 "$project/tools/dev_system_release.py" "$target/usr/lib/devos/dev_system_release.py"
+install -D -m 0644 "$project/tools/dev_rootfs.py" "$target/usr/lib/devos/dev_rootfs.py"
+install -D -m 0644 "$project/tools/dev_slots.py" "$target/usr/lib/devos/dev_slots.py"
+install -D -m 0644 "$project/tools/dev_config.py" "$target/usr/lib/devos/dev_config.py"
+install -D -m 0644 "$project/tools/dev_preserve.py" "$target/usr/lib/devos/dev_preserve.py"
+install -D -m 0644 "$project/tools/dev_deploy.py" "$target/usr/lib/devos/dev_deploy.py"
+install -D -m 0755 "$project/tools/dev_notifications.py" "$target/usr/lib/devos/dev_notifications.py"
+install -D -m 0755 "$project/installer/devos-install.py" "$target/usr/sbin/devos-install"
+install -D -m 0755 "$project/tools/memory-probe.py" "$target/usr/lib/devos/memory-probe.py"
+install -D -m 0440 "$project/config/sudoers" "$target/etc/sudoers"
+install -D -m 0644 "$project/rootfs-overlay/etc/os-release" "$target/usr/lib/os-release"
+mkdir -p "$target/var/lib/dev"
+python3 "$project/scripts/generate-platform.py" "$target" --build-output "$project/out/buildroot"
+python3 "$project/tools/dev.py" build "$project/examples/hello" "$target/opt/hello-0.1.0.dpk"

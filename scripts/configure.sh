@@ -1,0 +1,70 @@
+#!/bin/sh
+# Usage: sh scripts/configure.sh /absolute/path/to/buildroot-2026.08
+set -eu
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+project=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+br=$(CDPATH= cd -- "${1:?Provide a Buildroot 2026.08 source directory}" && pwd)
+case "$project:$br" in *' '*) echo 'Build paths must not contain spaces' >&2; exit 1;; esac
+out="$project/out/buildroot"
+make -C "$br" O="$out" BR2_EXTERNAL="$project/buildroot-external" qemu_x86_64_defconfig
+cat >> "$out/.config" <<EOF
+BR2_TARGET_GENERIC_HOSTNAME="dev-os"
+BR2_TARGET_GENERIC_ISSUE="Welcome to Dev OS 0.1 (prototype)"
+BR2_USE_WCHAR=y
+BR2_PACKAGE_PYTHON3=y
+BR2_PACKAGE_PYTHON3_ZLIB=y
+BR2_PACKAGE_PYTHON_TUF=y
+BR2_PACKAGE_BUSYBOX_SHOW_OTHERS=y
+BR2_PACKAGE_BASH=y
+BR2_PACKAGE_BUBBLEWRAP=y
+BR2_PACKAGE_XORG7=y
+BR2_PACKAGE_XLIB_LIBX11=y
+BR2_PACKAGE_LIBGLIB2=y
+BR2_PACKAGE_DBUS=y
+BR2_PACKAGE_SUDO=y
+BR2_PACKAGE_UTIL_LINUX=y
+BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+BR2_PACKAGE_UTIL_LINUX_MOUNT=y
+BR2_PACKAGE_DOSFSTOOLS=y
+BR2_PACKAGE_DOSFSTOOLS_MKFS_FAT=y
+BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y
+BR2_PACKAGE_E2FSPROGS=y
+BR2_TARGET_GRUB2=y
+BR2_TARGET_GRUB2_X86_64_EFI=y
+BR2_TARGET_GRUB2_INSTALL_TOOLS=y
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$project/config/installer-linux.fragment"
+BR2_TARGET_ROOTFS_TAR=y
+BR2_TARGET_ROOTFS_TAR_GZIP=y
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$project/config/busybox.fragment"
+BR2_ROOTFS_OVERLAY="$project/rootfs-overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="board/qemu/x86_64/post-build.sh $project/scripts/post-build.sh"
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_SIZE="2048M"
+# BR2_PACKAGE_HOST_QEMU is not set
+# BR2_PACKAGE_HOST_QEMU_SYSTEM_MODE is not set
+# BR2_TARGET_GENERIC_GETTY_PORT is not set
+BR2_TARGET_GENERIC_GETTY_PORT="ttyS0"
+# BR2_TARGET_ENABLE_ROOT_LOGIN is not set
+EOF
+if [ "${DEVOS_WITH_NODE:-0}" = 1 ]; then
+    # Node requires a C++ toolchain. Use a fresh build tree when enabling it.
+    printf '\nBR2_TOOLCHAIN_BUILDROOT_CXX=y\nBR2_PACKAGE_NODEJS=y\n' >> "$out/.config"
+fi
+make -C "$br" O="$out" olddefconfig
+if [ "${DEVOS_WITH_NODE:-0}" = 1 ]; then
+    grep -qx 'BR2_TOOLCHAIN_BUILDROOT_CXX=y' "$out/.config" &&
+    grep -qx 'BR2_PACKAGE_NODEJS=y' "$out/.config" || {
+        echo 'Requested Node runtime was not selected by Buildroot' >&2
+        exit 1
+    }
+fi
+if [ "${DEVOS_TEST_VM:-0}" = 1 ]; then
+    python3 "$project/scripts/test-accounts.py" "$out/.config" "$project/out"
+    make -C "$br" O="$out" olddefconfig
+fi
+if [ "${DEVOS_TEST_VM:-0}" = 1 ]; then
+    printf '\nConfigured with unique local test-VM credentials.\n'
+else
+    printf '\nConfigured. Set users/passwords with make -C "%s" menuconfig before building.\n' "$out"
+fi
+printf 'Build: sh "%s/scripts/build.sh"\n' "$project"

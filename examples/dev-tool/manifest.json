@@ -1,0 +1,11 @@
+{
+  "manifest_version": 1,
+  "name": "dev-tool",
+  "display_name": "Dev Tool",
+  "short_name": "Dev Tool",
+  "version": "0.1.0",
+  "arch": "all",
+  "description": "A small command-line tool for Dev OS",
+  "icons": {"128": "usr/share/dev-tool/icon.svg"},
+  "executables": ["usr/bin/dev-tool"]
+}

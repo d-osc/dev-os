@@ -1,0 +1,12 @@
+#!/bin/sh
+# Recover before normal user sessions. A conflict keeps the journal intact.
+case "${1:-start}" in
+    start|restart)
+        if ! /usr/bin/dev recover; then
+            echo 'Dev OS: package recovery needs administrator attention; journal preserved.' >&2
+            exit 1
+        fi
+        ;;
+    stop) ;;
+    *) echo "Usage: $0 {start|stop|restart}" >&2; exit 1 ;;
+esac

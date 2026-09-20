@@ -1,0 +1,118 @@
+{
+  "tuf": {
+    "version": "7.0.1",
+    "url": "https://files.pythonhosted.org/packages/9c/dd/52e7390cbac308e6b1cfe6be9bc3a96fe26326d5893cc297a52bb72792a9/tuf-7.0.1.tar.gz",
+    "filename": "tuf-7.0.1.tar.gz",
+    "sha256": "5ada1db78da3518fa851e28588f4b2249b8662a28ae528f54afa2a1de541fb31",
+    "license_hashes": {
+      "LICENSE": "d3174ad63e721d4c9dccb8ad4320848992d314369bc46319720b5802c9153fe9",
+      "LICENSE-MIT": "ad52fe92b0d21a9b3733b484eb6f865e83855f4a6f9b9b8812b9012dc4587d27"
+    },
+    "build_system": {
+      "requires": [
+        "hatchling==1.32.0"
+      ],
+      "build-backend": "hatchling.build"
+    }
+  },
+  "securesystemslib": {
+    "version": "1.5.1",
+    "url": "https://files.pythonhosted.org/packages/81/d4/f9323507144693d869f30f13694035438ab6642153b94e3057945cf0584f/securesystemslib-1.5.1.tar.gz",
+    "filename": "securesystemslib-1.5.1.tar.gz",
+    "sha256": "4b8d00abd93707ead10b69eb2b8582376a1364de3b0a71077de534c2ef4985e0",
+    "license_hashes": {
+      "LICENSE": "6357addf59ba70a824bc678c35e0936916e1cc38182f503372147191ed227bd3"
+    },
+    "build_system": {
+      "requires": [
+        "hatchling==1.31.0"
+      ],
+      "build-backend": "hatchling.build"
+    }
+  },
+  "cryptography": {
+    "version": "50.0.1",
+    "url": "https://files.pythonhosted.org/packages/bb/ad/5d6702db60b1e40b41ef513b6967ff5848f307d50f8449baf1634f5908f1/cryptography-50.0.1.tar.gz",
+    "filename": "cryptography-50.0.1.tar.gz",
+    "sha256": "5dd9bda1c12b4162f6ff568eeb5e0ff956c28d14406e875cfe8a63a2d414ff20",
+    "license_hashes": {
+      "LICENSE": "3e0c7c091a948b82533ba98fd7cbb40432d6f1a9acbf85f5922d2f99a93ae6bb",
+      "LICENSE.APACHE": "aac73b3148f6d1d7111dbca32099f68d26c644c6813ae1e4f05f6579aa2663fe",
+      "LICENSE.BSD": "602c4c7482de6479dd2e9793cda275e5e63d773dacd1eca689232ab7008fb4fb"
+    },
+    "build_system": {
+      "requires": [
+        "maturin>=1.14.1,<2",
+        "cffi>=2.0.0; platform_python_implementation != 'PyPy'",
+        "cffi>=2.1; python_version >= '3.15' and platform_python_implementation != 'PyPy'",
+        "setuptools!=74.0.0,!=74.1.0,!=74.1.1,!=74.1.2"
+      ],
+      "build-backend": "maturin"
+    }
+  },
+  "urllib3": {
+    "version": "2.8.0",
+    "url": "https://files.pythonhosted.org/packages/e3/05/b17359e1cefb4f909b5e40b1b90a496d987258916dbbf88e842c729f510e/urllib3-2.8.0.tar.gz",
+    "filename": "urllib3-2.8.0.tar.gz",
+    "sha256": "63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63",
+    "license_hashes": {
+      "LICENSE.txt": "130e3a64d5fdd5d096a752694634a7d9df284469de86e5732100268041e3d686"
+    },
+    "build_system": {
+      "requires": [
+        "hatchling>=1.27.0,<2",
+        "hatch-vcs>=0.4.0,<0.6.0",
+        "setuptools-scm>=8,<11"
+      ],
+      "build-backend": "hatchling.build"
+    }
+  },
+  "packaging": {
+    "version": "26.3",
+    "url": "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz",
+    "filename": "packaging-26.3.tar.gz",
+    "sha256": "94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79",
+    "license_hashes": {
+      "LICENSE": "cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48",
+      "LICENSE.APACHE": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "LICENSE.BSD": "b70e7e9b742f1cc6f948b34c16aa39ffece94196364bc88ff0d2180f0028fac5"
+    },
+    "build_system": {
+      "requires": [
+        "flit_core >=3.12"
+      ],
+      "build-backend": "flit_core.buildapi"
+    }
+  },
+  "cffi": {
+    "version": "2.1.1",
+    "url": "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz",
+    "filename": "cffi-2.1.1.tar.gz",
+    "sha256": "dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be",
+    "license_hashes": {
+      "LICENSE": "5ba24ddc57067f9249add644c3afc41a5d6dc37e23433ef759d95df370b0af63"
+    },
+    "build_system": {
+      "requires": [
+        "setuptools >= 77.0.3"
+      ],
+      "build-backend": "setuptools.build_meta"
+    }
+  },
+  "pycparser": {
+    "version": "3.0",
+    "url": "https://files.pythonhosted.org/packages/1b/7d/92392ff7815c21062bea51aa7b87d45576f649f16458d78b7cf94b9ab2e6/pycparser-3.0.tar.gz",
+    "filename": "pycparser-3.0.tar.gz",
+    "sha256": "600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29",
+    "license_hashes": {
+      "LICENSE": "0c846399369ea76ddd7b5c44fe6d16497415fcf015f5cbb508c24bf98b81c5b1"
+    },
+    "build_system": {
+      "requires": [
+        "setuptools>=69",
+        "wheel"
+      ],
+      "build-backend": "setuptools.build_meta"
+    }
+  }
+}

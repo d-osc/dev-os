@@ -1,0 +1,4 @@
+# Pinned upstream source and license hashes
+sha256  5ada1db78da3518fa851e28588f4b2249b8662a28ae528f54afa2a1de541fb31  tuf-7.0.1.tar.gz
+sha256  d3174ad63e721d4c9dccb8ad4320848992d314369bc46319720b5802c9153fe9  LICENSE
+sha256  ad52fe92b0d21a9b3733b484eb6f865e83855f4a6f9b9b8812b9012dc4587d27  LICENSE-MIT

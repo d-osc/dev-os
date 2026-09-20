@@ -1,0 +1,10 @@
+# Compatibility matrix for Buildroot 2026.08's curated runtime plus Dev OS external packages.
+# Host publisher/test requirements are independently pinned in repository-requirements.txt.
+tuf==7.0.1
+securesystemslib[crypto]==1.5.1
+cryptography==48.0.0
+urllib3==2.7.0
+packaging==26.2
+cffi==2.0.0
+pycparser==3.0
+pyelftools==0.32

@@ -1,0 +1,13 @@
+{
+  "manifest_version": 2,
+  "name": "notification-demo",
+  "display_name": "Dev OS Notification Demo",
+  "version": "0.1.0",
+  "arch": "all",
+  "permissions": ["background", "notifications"],
+  "background": {
+    "runtime": "python",
+    "entry_point": "opt/apps/notification-demo/background.py"
+  },
+  "executables": []
+}

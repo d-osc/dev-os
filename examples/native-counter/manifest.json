@@ -1,0 +1,11 @@
+{
+  "manifest_version": 2,
+  "name": "native-counter",
+  "display_name": "Native Linux Counter",
+  "version": "0.1.0",
+  "arch": "x86_64",
+  "permissions": ["background", "window", "storage"],
+  "background": {"runtime": "native", "entry_point": "opt/apps/native-counter/bin/counterd"},
+  "window": {"type": "desktop", "runtime": "native", "entry_point": "opt/apps/native-counter/bin/counter-window.bin"},
+  "executables": ["opt/apps/native-counter/bin/counterd", "opt/apps/native-counter/bin/counter-window.bin"]
+}

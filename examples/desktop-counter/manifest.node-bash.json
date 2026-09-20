@@ -1,0 +1,19 @@
+{
+  "manifest_version": 2,
+  "name": "desktop-counter",
+  "display_name": "Dev Counter (Node + Bash)",
+  "version": "0.1.0",
+  "arch": "all",
+  "description": "Node.js background with a Bash launcher for the native desktop window",
+  "permissions": ["background", "window", "storage"],
+  "background": {
+    "runtime": "node",
+    "entry_point": "opt/apps/desktop-counter/background.cjs"
+  },
+  "window": {
+    "type": "desktop",
+    "runtime": "bash",
+    "entry_point": "opt/apps/desktop-counter/window.sh"
+  },
+  "executables": []
+}

@@ -1,0 +1,4 @@
+menu "Dev OS"
+source "$BR2_EXTERNAL_DEVOS_PATH/package/python-securesystemslib/Config.in"
+source "$BR2_EXTERNAL_DEVOS_PATH/package/python-tuf/Config.in"
+endmenu

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+out/
+build/
+*.dpk
+node_modules/
+sdk/typescript/dist/

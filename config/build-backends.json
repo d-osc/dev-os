@@ -1,0 +1,16 @@
+{
+  "1.31.0": {
+    "url": "https://files.pythonhosted.org/packages/64/e2/2c0af0a52d16be74a4f194564fcdc417521ed863e9b65e4bc9052dacba6f/hatchling-1.31.0-py3-none-any.whl",
+    "filename": "hatchling-1.31.0-py3-none-any.whl",
+    "sha256": "aac80bec8b6fe35e8480f1c335be8910fa210a0e6f735a139be205dadcacb544",
+    "license_file": "hatchling-1.31.0.dist-info/licenses/LICENSE.txt",
+    "license_sha256": "7f143a8127ad4873862d70854b5bd2abd0085aa73e64fd2b08704a3b9f5c07fc"
+  },
+  "1.32.0": {
+    "url": "https://files.pythonhosted.org/packages/a9/84/1798b6d85ecde0e31546004efd25c5de1b1f49250644a60cce460e12593a/hatchling-1.32.0-py3-none-any.whl",
+    "filename": "hatchling-1.32.0-py3-none-any.whl",
+    "sha256": "0e17c9c3b9aa7c625acc8d0f5b622f107d5049af9ecf5ada4de1aada5be7cdbc",
+    "license_file": "hatchling-1.32.0.dist-info/licenses/LICENSE.txt",
+    "license_sha256": "7f143a8127ad4873862d70854b5bd2abd0085aa73e64fd2b08704a3b9f5c07fc"
+  }
+}

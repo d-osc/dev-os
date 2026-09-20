@@ -1,0 +1,8 @@
+{
+  "manifest_version": 1,
+  "name": "hello",
+  "version": "0.1.0",
+  "arch": "all",
+  "description": "Dev OS sample package",
+  "executables": ["usr/bin/dev-hello"]
+}

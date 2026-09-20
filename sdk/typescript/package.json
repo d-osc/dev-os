@@ -1,0 +1,37 @@
+{
+  "name": "@devos/dpk-sdk",
+  "version": "0.5.0",
+  "description": "Typed Developer Package Kit SDK for Dev OS",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "assets",
+    "README.md",
+    "examples"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/prepare.mjs && tsc -p tsconfig.json",
+    "test": "npm run build && tsc -p tsconfig.test.json && node --test test/*.test.mjs",
+    "prepack": "npm run build",
+    "test:release": "node scripts/test-release.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/tar-stream": "^3.1.4",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "tar-stream": "^3.2.1"
+  }
+}
