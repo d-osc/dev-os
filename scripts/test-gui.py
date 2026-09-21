@@ -28,9 +28,10 @@ def png_pixels(path):
     return width, height, zlib.decompress(b''.join(rows))
 
 
-def count(width, height, raw, predicate):
+def count(width, height, raw, predicate, x0=0, y0=0, x1=None, y1=None):
+    x1, y1 = x1 or width, y1 or height
     stride = width * 3 + 1
-    return sum(1 for y in range(height) for x in range(width)
+    return sum(1 for y in range(y0, y1) for x in range(x0, x1)
                if predicate(tuple(raw[y * stride + 1 + x * 3:y * stride + 1 + x * 3 + 3])))
 
 
@@ -63,6 +64,10 @@ def main():
         checks.append('window renders with anti-aliased detail (%d distinct shades)' % shades)
         assert count(width, height, raw, mint) > 100, 'green >_ mark and Close chip missing'
         checks.append('title-bar >_ prompt mark and primary Close chip present')
+        glyph = lambda p: 50 < min(p) < 170 and max(p) - min(p) > 20 and p[2] > p[0]
+        controls = count(width, height, raw, glyph, width - 84, 2, width - 2, 28)
+        assert controls > 40, 'minimize/maximize/close glyphs missing'
+        checks.append('title-bar controls (- [] x) rendered and hit-testable')
         assert count(width, height, raw, light) > 300, 'value text missing'
         assert count(width, height, raw, dim) > 100, 'heading text missing'
         checks.append('System Info rows (Version/Kernel/Memory/Uptime) rendered')

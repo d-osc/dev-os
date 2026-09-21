@@ -48,6 +48,23 @@ class Widgets(unittest.TestCase):
         self.assertTrue(gui.rect_hit(9, 9, 0, 0, 10, 10))
         self.assertFalse(gui.rect_hit(10, 5, 0, 0, 10, 10))
 
+    def test_control_zones_cover_the_three_buttons(self):
+        self.assertEqual(gui.control_at(380 - 15, 15, 380), 'close')
+        self.assertEqual(gui.control_at(380 - 41, 15, 380), 'max')
+        self.assertEqual(gui.control_at(380 - 67, 15, 380), 'min')
+        self.assertIsNone(gui.control_at(380 - 100, 15, 380))
+        self.assertIsNone(gui.control_at(380 - 15, 31, 380))
+        self.assertIsNone(gui.control_at(380 - 15, -1, 380))
+
+    def test_maximize_toggle_swaps_and_restores(self):
+        current = {'x': 80, 'y': 90, 'width': 380, 'height': 230}
+        target, stashed = gui.toggle_maximize(current, (1024, 768), None)
+        self.assertEqual((target['width'], target['height']), (1024, 768))
+        self.assertEqual(stashed, current)
+        restored, stashed = gui.toggle_maximize(target, (1024, 768), stashed)
+        self.assertEqual(restored, current)
+        self.assertIsNone(stashed)
+
     def test_window_geometry_and_chrome(self):
         self.assertEqual(gui.TITLE_HEIGHT, 30)
         toolkit = type('T', (), {})  # only constants are exercised here

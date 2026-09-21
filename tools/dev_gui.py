@@ -1,16 +1,18 @@
 """Small ctypes X11 + Cairo widget toolkit for Dev OS.
 
 Shared by the desktop shell and DPK window apps: connection helpers, a
-decorated toplevel Window with title bar, drag and close, popup windows,
-anti-aliased Buttons and Labels with hover/press feedback, and window
-capture for tests. The host must provide libX11, libcairo and fontconfig
-fonts, exactly like the shell itself. Pure-logic parts (hit testing and
-button state) stay importable everywhere for unit tests.
+decorated toplevel Window with title bar, drag and the minimize /
+maximize / close controls, popup windows, anti-aliased Buttons and Labels
+with hover/press feedback, and window capture for tests. The host must
+provide libX11, libcairo and fontconfig fonts, exactly like the shell
+itself. Pure-logic parts (hit testing, control zones and button state)
+stay importable everywhere for unit tests.
 """
 import ctypes as c
 import time
 
 TITLE_HEIGHT = 30
+CONTROL_WIDTH = 26
 RADIUS = 10
 BUTTON_RADIUS = 8
 FONT = b'DejaVu Sans'
@@ -32,6 +34,23 @@ def click_completes(pressed_inside, released_inside):
 
 def rect_hit(x, y, left, top, width, height):
     return left <= x < left + width and top <= y < top + height
+
+
+def control_at(x, y, width, height=TITLE_HEIGHT):
+    """'min'/'max'/'close' for a title-bar point; None outside the controls."""
+    if not 0 <= y < height:
+        return None
+    for name, start in (('close', width - 28), ('max', width - 54), ('min', width - 80)):
+        if start <= x < start + CONTROL_WIDTH:
+            return name
+    return None
+
+
+def toggle_maximize(current, screen, stashed):
+    """(next geometry, stashed previous) for a maximize/restore click."""
+    if stashed is None:
+        return {'x': 0, 'y': 0, 'width': screen[0], 'height': screen[1]}, dict(current)
+    return dict(stashed), None
 
 
 # ---------------------------------------------------------------- X11 layer
@@ -141,6 +160,7 @@ def connect():
                              c.c_void_p, c.c_void_p, c.POINTER(c.c_void_p)),
         'raise_window': bind('XRaiseWindow', c.c_int, c.c_void_p, c.c_ulong),
         'set_input_focus': bind('XSetInputFocus', c.c_int, c.c_void_p, c.c_ulong, c.c_int, c.c_long),
+        'iconify': bind('XIconifyWindow', c.c_int, c.c_void_p, c.c_int, c.c_ulong),
         'grab_pointer': bind('XGrabPointer', c.c_int, c.c_void_p, c.c_ulong, c.c_int, c.c_uint,
                              c.c_uint, c.c_uint, c.c_ulong, c.c_long),
         'ungrab_pointer': bind('XUngrabPointer', c.c_int, c.c_void_p, c.c_long),
@@ -372,6 +392,8 @@ class Window:
         self.draw_callback = None
         self.on_close = None
         self._drag = None
+        self._control_hover = None
+        self._stashed = None
         self._dirty = True
         self._surface_for(width, height)
 
@@ -389,6 +411,28 @@ class Window:
         self.tk.api['move_resize'](self.tk.display, self.window, self.x, self.y, width, height)
         self._surface_for(width, height)
         self._dirty = True
+
+    def place(self, x, y, width, height):
+        """Move and resize in one step (used by the maximize toggle)."""
+        self.x, self.y, self.width, self.height = x, y, width, height
+        self.tk.api['move_resize'](self.tk.display, self.window, x, y, width, height)
+        self._surface_for(width, height)
+        self._dirty = True
+
+    def _control(self, x, y):
+        return control_at(x, y, self.width) if self.kind == 'toplevel' else None
+
+    def _minimize(self):
+        if not self.tk.api['iconify'](self.tk.display, 0, self.window):
+            # No window manager to iconify through: hide the window instead.
+            self.tk.api['unmap'](self.tk.display, self.window)
+
+    def _maximize(self):
+        current = {'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height}
+        target, stashed = toggle_maximize(current, (self.tk.width, self.tk.height),
+                                          self._stashed)
+        self._stashed = stashed
+        self.place(target['x'], target['y'], target['width'], target['height'])
 
     def add_button(self, label, left, top, width, height, callback=None, primary=False):
         button = Button(label, left, top, width, height, callback, primary)
@@ -434,17 +478,48 @@ class Window:
             cairo.close_path(cr)
             cairo.fill(cr)
             tk.text(cr, self.title, 28, TITLE_HEIGHT - 9, PALETTE['text'], 12.0, True)
-            close = PALETTE['red'] if self._close_hover else PALETTE['dim']
-            cairo.set_rgba(cr, *close, 1.0)
-            cairo.set_line_width(cr, 1.6)
-            cairo.new_sub_path(cr)
-            cairo.line_to(cr, w - 19.5, TITLE_HEIGHT / 2 - 3.5)
-            cairo.line_to(cr, w - 12.5, TITLE_HEIGHT / 2 + 3.5)
-            cairo.stroke(cr)
-            cairo.new_sub_path(cr)
-            cairo.line_to(cr, w - 12.5, TITLE_HEIGHT / 2 - 3.5)
-            cairo.line_to(cr, w - 19.5, TITLE_HEIGHT / 2 + 3.5)
-            cairo.stroke(cr)
+            # Window controls at the right: - (minimize), square (maximize or
+            # restore), x (close). Gray at rest, lit on hover; close reddens.
+            for name, cx in (('min', w - 67), ('max', w - 41), ('close', w - 15)):
+                hovered = self._control_hover == name
+                color = PALETTE['dim']
+                if hovered:
+                    color = PALETTE['red'] if name == 'close' else PALETTE['text']
+                    tint = PALETTE['red'] if name == 'close' else (1.0, 1.0, 1.0)
+                    cairo.set_rgba(cr, *tint, 0.14)
+                    cairo.rounded(cr, cx - 12, 3, 24, 24, 6)
+                    cairo.fill(cr)
+                cairo.set_rgba(cr, *color, 1.0)
+                if name == 'min':
+                    cairo.set_line_width(cr, 2.0)
+                    cairo.new_sub_path(cr)
+                    cairo.line_to(cr, cx - 5, 18.5)
+                    cairo.line_to(cr, cx + 5, 18.5)
+                    cairo.stroke(cr)
+                elif name == 'max':
+                    cairo.set_line_width(cr, 1.8)
+                    if self._stashed is None:
+                        cairo.rounded(cr, cx - 4.5, 10.5, 9, 9, 1.5)
+                        cairo.stroke(cr)
+                    else:  # restore state: two overlapping plates
+                        cairo.rounded(cr, cx - 2, 9, 8, 8, 1.5)
+                        cairo.stroke(cr)
+                        cairo.set_rgba(cr, *PALETTE['chrome'], 1.0)
+                        cairo.rounded(cr, cx - 6, 13, 8, 8, 1.5)
+                        cairo.fill(cr)
+                        cairo.set_rgba(cr, *color, 1.0)
+                        cairo.rounded(cr, cx - 6, 13, 8, 8, 1.5)
+                        cairo.stroke(cr)
+                else:
+                    cairo.set_line_width(cr, 2.0)
+                    cairo.new_sub_path(cr)
+                    cairo.line_to(cr, cx - 3.5, TITLE_HEIGHT / 2 - 3.5)
+                    cairo.line_to(cr, cx + 3.5, TITLE_HEIGHT / 2 + 3.5)
+                    cairo.stroke(cr)
+                    cairo.new_sub_path(cr)
+                    cairo.line_to(cr, cx + 3.5, TITLE_HEIGHT / 2 - 3.5)
+                    cairo.line_to(cr, cx - 3.5, TITLE_HEIGHT / 2 + 3.5)
+                    cairo.stroke(cr)
         if self.draw_callback:
             self.draw_callback(self)
         for label in self.labels:
@@ -459,11 +534,8 @@ class Window:
         tk.api['flush'](tk.display)
         self._dirty = False
 
-    _close_hover = False
-
     def _in_close(self, x, y):
-        return self.kind == 'toplevel' and (self.width - 28) <= x <= (self.width - 4) \
-            and 2 <= y <= TITLE_HEIGHT - 2
+        return self._control(x, y) == 'close'
 
     def capture(self, path, width=None, height=None):
         """Self-capture; waits out the compositor and redraws, per XWayland."""
@@ -515,9 +587,9 @@ class Window:
                         continue
                     x, y = button_event.x, button_event.y
                     if kind == 6:
-                        hover = self._in_close(x, y)
-                        if hover != self._close_hover:
-                            self._close_hover, self._dirty = hover, True
+                        control = self._control(x, y)
+                        if control != self._control_hover:
+                            self._control_hover, self._dirty = control, True
                         for item in self.buttons:
                             if item.motion(x, y):
                                 self._dirty = True
@@ -526,10 +598,17 @@ class Window:
                             self._drag = (x, y)
                             api['move'](self.tk.display, self.window, self.x, self.y)
                     elif kind == 4:
-                        if self._in_close(x, y):
+                        control = self._control(x, y)
+                        if control == 'close':
                             self.open_ = False
                             if self.on_close:
                                 self.on_close()
+                            continue
+                        if control == 'min':
+                            self._minimize()
+                            continue
+                        if control == 'max':
+                            self._maximize()
                             continue
                         if self.kind == 'toplevel' and y < TITLE_HEIGHT:
                             self._drag = (x, y)
