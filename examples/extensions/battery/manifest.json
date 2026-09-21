@@ -1,0 +1,8 @@
+{
+  "id": "devos.battery",
+  "name": "Battery",
+  "version": "1.0.0",
+  "description": "Battery tray icon with a status command",
+  "engine": 1,
+  "main": "extension.py"
+}

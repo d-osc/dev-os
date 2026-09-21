@@ -1,0 +1,8 @@
+{
+  "id": "devos.theme-switch",
+  "name": "Theme Switch",
+  "version": "1.0.0",
+  "description": "Cycle the desktop theme from the menu",
+  "engine": 1,
+  "main": "extension.py"
+}

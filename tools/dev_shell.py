@@ -28,6 +28,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.append('/usr/lib/devos')
 import dev_gui  # noqa: E402
+import dev_extensions  # noqa: E402
 import dev_settings  # noqa: E402
 import dev_theme  # noqa: E402
 
@@ -38,6 +39,7 @@ SEPARATOR_OFF = 15
 PIN_PAD = 12
 PIN_START = MENU_END + SEPARATOR_OFF + PIN_PAD
 PIN_SIZE, PIN_GAP = 28, 10
+TRAY_SIZE, TRAY_GAP, TRAY_PITCH, TRAY_LEFT = 16, 8, 24, 88
 MAX_PINNED = 9
 TRAY_RESERVE = 220
 CLOCK_PAD = 10
@@ -73,7 +75,7 @@ def applications(database):
             continue
         launcher = record.get('launcher') or {}
         label = launcher.get('name') or record.get('display_name') or name
-        items.append({'name': name, 'label': str(label)[:48],
+        items.append({'kind': 'app', 'name': name, 'label': str(label)[:48],
                       'comment': str(launcher.get('comment') or record.get('description') or '')[:80],
                       'categories': launcher.get('categories') or ['Utility'],
                       'permissions': list(record.get('permissions') or [])})
@@ -144,19 +146,23 @@ def pinned_states(items, clients):
     return [window is not None for window in windows], active
 
 
-def bar_regions(width, app_count=0):
+def bar_regions(width, app_count=0, tray_right=None, tray_count=0):
     """Clickable spans of the bar: (kind, start, end, index)."""
     regions = [('menu', 0, MENU_END, None)]
     left = PIN_START
     for index in range(app_count):
         regions.append(('app', left, left + PIN_SIZE, index))
         left += PIN_SIZE + PIN_GAP
+    if tray_count and tray_right is not None:
+        for index in range(tray_count):
+            start = tray_right - TRAY_PITCH * (index + 1) + TRAY_GAP
+            regions.append(('tray', start, start + TRAY_SIZE, index))
     regions.append(('clock', width - CLOCK_PAD - CLOCK_BLOCK, width, None))
     return regions
 
 
-def bar_hit(width, x, app_count=0):
-    for kind, start, end, index in bar_regions(width, app_count):
+def bar_hit(width, x, app_count=0, tray_right=None, tray_count=0):
+    for kind, start, end, index in bar_regions(width, app_count, tray_right, tray_count):
         if start <= x < end:
             return kind, index
     return None, None
@@ -188,10 +194,11 @@ def consent_choice(x, y, item_count, consent):
     return None
 
 
-def hover_key(area, x, y, *, width=0, app_count=0, item_count=0, consent=False):
+def hover_key(area, x, y, *, width=0, app_count=0, tray_right=None, tray_count=0,
+              item_count=0, consent=False):
     """Which actionable element the pointer is over, for hover feedback."""
     if area == 'bar':
-        for kind, start, end, index in bar_regions(width, app_count):
+        for kind, start, end, index in bar_regions(width, app_count, tray_right, tray_count):
             if start <= x < end and kind != 'clock':
                 return kind if index is None else (kind, index)
         return None
@@ -259,7 +266,8 @@ def theme_from(path, settings=None, settings_dir=None):
     return dev_theme.load(resolved), str(resolved)
 
 
-def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=None):
+def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=None,
+        extension_dirs=None):
     settings = settings or {}
     if theme is None:
         theme, theme_source = dev_gui.DEFAULT_THEME, None
@@ -344,13 +352,42 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         cairo.text_extents(cr_bar, content.encode('utf-8'), c.byref(extents))
         return extents.x_advance
 
-    items = applications(load_database(root))
-    pinned = items[:pinned_count(len(items), width)]
+    apps = applications(load_database(root))
+    pinned = apps[:pinned_count(len(apps), width)]
     icons_left = PIN_START
+
+    def switch_theme(source):
+        nonlocal theme
+        theme = dev_theme.load(source)
+        apply_theme(theme)
+        THEME_SOURCE[0] = source
+
+    def notify_bridge(title, body):
+        try:
+            sys.path.append('/usr/lib/devos')
+            import dev_notifications
+            dev_notifications.send(title, body)
+        except Exception:
+            print('notification: %s — %s' % (title, body), file=sys.stderr)
+
+    host = None
+    if extension_dirs:
+        host = dev_extensions.Host({
+            'settings': lambda: settings,
+            'theme': lambda: {'name': theme['name']},
+            'screen': lambda: [width, height],
+            'notify': notify_bridge,
+            'set_theme': switch_theme,
+        }).load(extension_dirs)
+        for broken in host.report:
+            print('extension %s failed: %s' % (broken['id'], broken['error']),
+                  file=sys.stderr)
+    entries = apps + (host.command_entries() if host else [])
     consent = None
     menu_open = False
     clock = ''
     hover = [None]
+    tray_right = [None]
 
     def clients():
         found = []
@@ -363,7 +400,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         return found
 
     def place_menu():
-        geometry = menu_geometry(width, height, len(items), consent is not None)
+        geometry = menu_geometry(width, height, len(entries), consent is not None)
         api['move_resize'](display, menu, geometry['x'], geometry['y'],
                            geometry['width'], geometry['height'])
         menu_surface_for(geometry['width'], geometry['height'])
@@ -461,6 +498,14 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                   DESIGN['gray'], colors, 1.4)
         draw_icon(cairo, cr_bar, dev_gui.ICONS['bell'], separator - 72, 12,
                   DESIGN['gray'], colors, 1.4)
+        tray_right[0] = None
+        if host and host.tray:
+            tray_right[0] = separator - TRAY_LEFT
+            for index, item in enumerate(host.tray):
+                icon = item['icon'] if not isinstance(item['icon'], str)                     else dev_gui.ICONS[item['icon']]
+                dev_theme.draw_icon(cairo, cr_bar, icon,
+                                    tray_right[0] - TRAY_PITCH * index - TRAY_SIZE, 12,
+                                    colors[item['color']], colors, 1.4)
         cairo.surface_flush(bar_surface)
         api['flush'](display)
         return tasks
@@ -499,7 +544,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         cairo.line_to(cr, w - 8, MENU_HEADER_HEIGHT - 3.5)
         cairo.stroke(cr)
         top = MENU_HEADER_HEIGHT
-        for index, item in enumerate(items):
+        for index, item in enumerate(entries):
             hovered = hover[0] == ('item', index)
             if hovered or (consent is not None and item is consent):
                 cairo.set_rgba(cr, *ACCENT, 0.16 if hovered else 0.10)
@@ -541,7 +586,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     started = time.monotonic()
     captured = shots is None
     while running:
-        geometry = menu_geometry(width, height, len(items), consent is not None)
+        geometry = menu_geometry(width, height, len(entries), consent is not None)
         tasks = draw_bar()
         if menu_open:
             draw_menu(geometry)
@@ -554,12 +599,20 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 running = False
             elif kind in (4, 5, 6) and event.button.window == bar:
                 position = event.button
+                tray_count = len(host.tray) if host else 0
                 if kind == 6:
-                    hover[0] = hover_key('bar', position.x, position.y,
-                                         width=width, app_count=len(pinned))
+                    hover[0] = hover_key('bar', position.x, position.y, width=width,
+                                         app_count=len(pinned), tray_right=tray_right[0],
+                                         tray_count=tray_count)
                 elif kind == 4:
-                    hit, index = bar_hit(width, position.x, len(pinned))
-                    if hit == 'menu':
+                    hit, index = bar_hit(width, position.x, len(pinned),
+                                         tray_right[0], tray_count)
+                    if hit == 'tray' and host and index < len(host.tray):
+                        try:
+                            host.tray_click(index)
+                        except Exception as error:
+                            print('tray command failed: %s' % error, file=sys.stderr)
+                    elif hit == 'menu':
                         open_menu(not menu_open)
                     elif hit == 'app' and index is not None and index < len(pinned):
                         target = pinned[index]
@@ -577,10 +630,10 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 position = event.button
                 if kind == 6:
                     hover[0] = hover_key('menu', position.x, position.y,
-                                         item_count=len(items), consent=consent is not None)
+                                         item_count=len(entries), consent=consent is not None)
                 else:
-                    index = item_at(len(items), position.y, consent is not None)
-                    choice = consent_choice(position.x, position.y, len(items),
+                    index = item_at(len(entries), position.y, consent is not None)
+                    choice = consent_choice(position.x, position.y, len(entries),
                                             consent is not None)
                     if choice == 'allow':
                         environment = dict(os.environ)
@@ -597,17 +650,24 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                         consent = None
                         draw_menu(menu_geometry(width, height, len(items), False))
                     elif index is not None and index >= 0 and not consent:
-                        consent = items[index]
-                        draw_menu(menu_geometry(width, height, len(items), True))
+                        if entries[index].get('kind') == 'command' and host:
+                            try:
+                                host.run_command(entries[index]['name'])
+                            except Exception as error:
+                                print('command %s failed: %s'
+                                      % (entries[index]['name'], error), file=sys.stderr)
+                        else:
+                            consent = entries[index]
+                            draw_menu(menu_geometry(width, height, len(entries), True))
         if not captured and time.monotonic() - started >= 1.0:
             captured = True
             api['sync'](display, 0)
             screenshot(x, api, display, bar, shots[0], width, BAR_HEIGHT)
             if not menu_open:
                 open_menu(True)
-            consent = items[0] if items else None
+            consent = apps[0] if apps else None
             place_menu()
-            geometry = menu_geometry(width, height, len(items), consent is not None)
+            geometry = menu_geometry(width, height, len(entries), consent is not None)
             draw_menu(geometry)
             # XWayland needs a compositor round trip after a resize before the
             # window has a capturable surface again; redraw onto the settled
@@ -620,8 +680,11 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             screenshot(x, api, display, menu, shots[1], geometry['width'], geometry['height'])
             running = False
         time.sleep(0.2)
-    return {'screen': [width, height], 'applications': len(items), 'pinned': len(pinned),
-            'theme': theme['name']}
+    counts = (list(host.loaded), len(host.commands)) if host else ([], 0)
+    if host:
+        host.unload()
+    return {'screen': [width, height], 'applications': len(apps), 'pinned': len(pinned),
+            'theme': theme['name'], 'extensions': counts[0], 'commands': counts[1]}
 
 
 def main():
@@ -634,6 +697,9 @@ def main():
     parser.add_argument('--theme', type=Path,
                         help='theme file or name overriding the settings ('
                              'default: $DEVOS_THEME or the settings theme)')
+    parser.add_argument('--extensions', type=Path,
+                        help='extensions directory override (default: '
+                             '~/.config/devos/extensions then /usr/share/devos/extensions)')
     parser.add_argument('--screenshot-prefix', type=Path,
                         help='capture bar and menu PNGs once, then exit')
     args = parser.parse_args()
@@ -648,8 +714,11 @@ def main():
     except (OSError, ValueError) as error:
         raise SystemExit('Could not load settings or theme: %s' % error)
     dev_gui.set_font(settings['font.family'])
+    extension_dirs = [args.extensions] if args.extensions else \
+        [Path.home() / '.config/devos/extensions', Path('/usr/share/devos/extensions')]
     result = run(args.root, dev=args.dev, shots=shots, theme=theme,
-                 theme_source=theme_source, settings=settings)
+                 theme_source=theme_source, settings=settings,
+                 extension_dirs=extension_dirs)
     print(json.dumps(result))
     if shots:
         print('Screenshots: ' + ' '.join(shots))

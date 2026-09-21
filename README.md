@@ -95,7 +95,7 @@ QEMU ต้องอยู่ใน PATH สคริปต์ใช้ `-snapsh
 
 ## รูปแบบ Developer Package Kit v1
 
-แอปที่มี permissions, background และหน้าต่าง native Desktop มี [DPK runtime รุ่น 2](DPK-RUNTIME.md) ในซอร์สแล้ว ทดสอบบน Linux/WSLg; ยังไม่รวมใน ISO CLI ที่ส่งมอบก่อนหน้านี้ มี [desktop shell: taskbar 40px ตามดีไซน์ (pill >_ DEVOS, ไอคอนแอปกลางจอ, tray, นาฬิกา 2 บรรทัด) พร้อมเมนูแอปแบบขออยินยอม](SHELL.md) แบบ X11 ล้วน ทดสอบบน display จริงด้วยภาพหลักฐานแล้ว ปรับแต่งได้ด้วย[ธีมสี/มุม/ไอคอนแบบ JSON](THEMES.md) และ[`settings.json` แบบ VS Code](SETTINGS.md)
+แอปที่มี permissions, background และหน้าต่าง native Desktop มี [DPK runtime รุ่น 2](DPK-RUNTIME.md) ในซอร์สแล้ว ทดสอบบน Linux/WSLg; ยังไม่รวมใน ISO CLI ที่ส่งมอบก่อนหน้านี้ มี [desktop shell: taskbar 40px ตามดีไซน์ (pill >_ DEVOS, ไอคอนแอปกลางจอ, tray, นาฬิกา 2 บรรทัด) พร้อมเมนูแอปแบบขออยินยอม](SHELL.md) แบบ X11 ล้วน ทดสอบบน display จริงด้วยภาพหลักฐานแล้ว ปรับแต่งได้ด้วย[ธีมสี/มุม/ไอคอนแบบ JSON](THEMES.md) กับ[`settings.json` แบบ VS Code](SETTINGS.md) และขยายได้ด้วย[extension (คำสั่งเมนู + ไอคอนถาด)](EXTENSIONS.md)
 
 ดู [คู่มือออกแบบและ pack .dpk](DPK-FORMAT.md) สำหรับโครงสร้าง source, metadata, รูปแบบ archive, ขั้นตอนตรวจ และตัวอย่างพร้อมใช้งานใน `examples/dev-tool/`
 
