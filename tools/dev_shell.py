@@ -2,7 +2,7 @@
 """Dev OS desktop shell: the design taskbar, application menu and clock.
 
 A flat near-black bar (40px) matching the reference design: a green-outlined
-`>_ DEVOS` start pill on the left, centered pinned-app icons with running
+`>_ DEVOS` start button on the left, pinned-app icons with running
 dots and a blue active underline, decorative tray glyphs (wifi, volume,
 notifications) and a two-line clock on the right. Rendering and X11 plumbing
 come from the shared dev_gui toolkit (ctypes + Cairo): anti-aliased TrueType
@@ -29,16 +29,16 @@ sys.path.append('/usr/lib/devos')
 import dev_gui  # noqa: E402
 
 BAR_HEIGHT = 40
-PILL_X, PILL_WIDTH = 8, 96
+PILL_X, PILL_WIDTH = 8, 100
 MENU_END = PILL_X + PILL_WIDTH
-PIN_PAD = 16
-PIN_START = MENU_END + PIN_PAD
+SEPARATOR_OFF = 15
+PIN_PAD = 12
+PIN_START = MENU_END + SEPARATOR_OFF + PIN_PAD
 PIN_SIZE, PIN_GAP = 28, 10
 MAX_PINNED = 9
 TRAY_RESERVE = 220
 CLOCK_PAD = 10
 CLOCK_BLOCK = 68
-MONO = b'DejaVu Sans Mono'
 MENU_WIDTH = 320
 MENU_ITEM_HEIGHT = 36
 MENU_HEADER_HEIGHT = 26
@@ -49,8 +49,9 @@ PALETTE = dev_gui.PALETTE
 # The reference design palette: flat near-black base, a green start accent,
 # a blue active-app underline and a red notification badge.
 DESIGN = {'bg': (0.043, 0.059, 0.086), 'line': (0.102, 0.125, 0.189),
-          'green': (0.180, 1.0, 0.561), 'blue': (0.0, 0.667, 1.0),
-          'white': (0.902, 0.918, 0.941), 'gray': (0.435, 0.502, 0.596),
+          'button': (0.067, 0.094, 0.153), 'sep': (0.133, 0.176, 0.239),
+          'green': (0.0, 1.0, 0.612), 'blue': (0.0, 0.667, 1.0),
+          'white': (0.945, 0.961, 0.976), 'gray': (0.435, 0.502, 0.596),
           'red': (1.0, 0.267, 0.267)}
 ACCENT = DESIGN['green']
 
@@ -203,6 +204,28 @@ def load_database(root):
 
 # ------------------------------------------------------------- tray glyphs
 
+def draw_prompt(cairo, cr, x, y, width, height):
+    """The `>_` terminal glyph of the start button, scaled from the SVG."""
+    cairo.set_rgba(cr, *DESIGN['green'], 1.0)
+    cairo.set_line_width(cr, height * 0.085)
+    left, tip = x + width * 0.10, x + width * 0.174
+    mid, top, bottom = y + height * 0.513, y + height * 0.338, y + height * 0.688
+    cairo.new_sub_path(cr)
+    cairo.move_to(cr, left, top)
+    cairo.line_to(cr, tip, mid)
+    cairo.line_to(cr, left, bottom)
+    cairo.stroke(cr)
+    bar_x, bar_y = x + width * 0.195, y + height * 0.734
+    bar_w, bar_h = width * 0.078, height * 0.088
+    cairo.new_sub_path(cr)
+    cairo.move_to(cr, bar_x, bar_y)
+    cairo.line_to(cr, bar_x + bar_w, bar_y)
+    cairo.line_to(cr, bar_x + bar_w, bar_y + bar_h)
+    cairo.line_to(cr, bar_x, bar_y + bar_h)
+    cairo.close_path(cr)
+    cairo.fill(cr)
+
+
 def draw_wifi(cairo, cr, cx, cy):
     cairo.set_rgba(cr, *DESIGN['green'], 1.0)
     cairo.set_line_width(cr, 1.4)
@@ -344,18 +367,18 @@ def run(root, *, dev='dev', shots=None):
             cairo.surface_set_size(menu_surface[0], w, h)
         return cr_menu[0]
 
-    def text(cr, content, px, py, color, size=12.0, bold=False, alpha=1.0, mono=False):
+    def text(cr, content, px, py, color, size=12.0, bold=False, alpha=1.0):
         cairo.font_size(cr, size)
-        cairo.font_face(cr, MONO if mono else dev_gui.FONT, 0, 1 if bold else 0)
+        cairo.font_face(cr, dev_gui.FONT, 0, 1 if bold else 0)
         cairo.set_rgba(cr, *color, alpha)
         cairo.move_to(cr, px, py)
         cairo.show_text(cr, content.encode('utf-8'))
 
     extents = dev_gui.TextExtents()
 
-    def measure(content, size=12.0, bold=False, mono=False):
+    def measure(content, size=12.0, bold=False):
         cairo.font_size(cr_bar, size)
-        cairo.font_face(cr_bar, MONO if mono else dev_gui.FONT, 0, 1 if bold else 0)
+        cairo.font_face(cr_bar, dev_gui.FONT, 0, 1 if bold else 0)
         cairo.text_extents(cr_bar, content.encode('utf-8'), c.byref(extents))
         return extents.x_advance
 
@@ -406,18 +429,25 @@ def run(root, *, dev='dev', shots=None):
         cairo.line_to(cr_bar, 0, 0.5)
         cairo.line_to(cr_bar, width, 0.5)
         cairo.stroke(cr_bar)
-        # Start pill: >_ DEVOS, outlined and labelled in the design green.
+        # Start button per the reference SVG: dark rounded rect outlined in
+        # green, vector >_ glyph, white DEVOS lettering, then a separator.
         hovered = hover[0] == 'menu'
-        cairo.set_rgba(cr_bar, *DESIGN['green'], 0.16 if hovered else 0.07)
-        cairo.rounded(cr_bar, PILL_X, 7, PILL_WIDTH, BAR_HEIGHT - 14, 13)
+        cairo.set_rgba(cr_bar, *DESIGN['button'], 1.0)
+        cairo.rounded(cr_bar, PILL_X, 7, PILL_WIDTH, BAR_HEIGHT - 14, 6)
         cairo.fill(cr_bar)
         cairo.set_rgba(cr_bar, *DESIGN['green'], 1.0 if hovered else 0.85)
         cairo.set_line_width(cr_bar, 1.5)
-        cairo.rounded(cr_bar, PILL_X + 0.75, 7.75, PILL_WIDTH - 1.5, BAR_HEIGHT - 15.5, 12.25)
+        cairo.rounded(cr_bar, PILL_X + 0.75, 7.75, PILL_WIDTH - 1.5, BAR_HEIGHT - 15.5, 5.25)
         cairo.stroke(cr_bar)
-        label = '>_ DEVOS'
-        text(cr_bar, label, PILL_X + (PILL_WIDTH - measure(label, 11.0, True, True)) / 2, 24,
-             DESIGN['green'], 11.0, True, mono=True)
+        draw_prompt(cairo, cr_bar, PILL_X, 7, PILL_WIDTH, BAR_HEIGHT - 14)
+        text(cr_bar, 'DEVOS', PILL_X + PILL_WIDTH * 0.355, 25.9, DESIGN['white'], 16.0, True)
+        separator_x = MENU_END + SEPARATOR_OFF + 0.5
+        cairo.set_rgba(cr_bar, *DESIGN['sep'], 1.0)
+        cairo.set_line_width(cr_bar, 1.5)
+        cairo.new_sub_path(cr_bar)
+        cairo.line_to(cr_bar, separator_x, 10)
+        cairo.line_to(cr_bar, separator_x, BAR_HEIGHT - 10)
+        cairo.stroke(cr_bar)
         # Pinned app icons after the pill: monogram, running dot, active line.
         tasks = clients()
         running, active = pinned_states(pinned, tasks)
@@ -450,7 +480,7 @@ def run(root, *, dev='dev', shots=None):
         text(cr_bar, clock, right - time_width, 18, DESIGN['white'], 13.0, True)
         text(cr_bar, date, right - date_width, 31, DESIGN['gray'], 8.5)
         separator = right - max(time_width, date_width) - 14 + 0.5
-        cairo.set_rgba(cr_bar, *DESIGN['line'], 1.0)
+        cairo.set_rgba(cr_bar, *DESIGN['sep'], 1.0)
         cairo.set_line_width(cr_bar, 1)
         cairo.new_sub_path(cr_bar)
         cairo.line_to(cr_bar, separator, 10)
