@@ -65,6 +65,20 @@ class Widgets(unittest.TestCase):
         self.assertEqual(restored, current)
         self.assertIsNone(stashed)
 
+    def test_ellipsize_with_fake_metrics(self):
+        measure = lambda text: len(text) * 6
+        self.assertEqual(gui.ellipsize('short', measure, 60), 'short')
+        self.assertEqual(gui.ellipsize('a-very-long-title', measure, 54), 'a-very...')
+        self.assertEqual(gui.ellipsize('abcdef', measure, 12), '...')
+
+    def test_double_click_needs_speed_and_same_spot(self):
+        first = {'time': 1000, 'x': 10, 'y': 12}
+        self.assertFalse(gui.double_click(None, 1200, 10, 12))
+        self.assertTrue(gui.double_click(first, 1200, 10, 12))
+        self.assertFalse(gui.double_click(first, 1500, 10, 12))
+        self.assertFalse(gui.double_click(first, 1200, 40, 12))
+        self.assertFalse(gui.double_click(first, 1200, 10, 30))
+
     def test_window_geometry_and_chrome(self):
         self.assertEqual(gui.TITLE_HEIGHT, 30)
         toolkit = type('T', (), {})  # only constants are exercised here

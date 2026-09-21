@@ -53,6 +53,23 @@ def toggle_maximize(current, screen, stashed):
     return dict(stashed), None
 
 
+def ellipsize(text, measure, max_px):
+    """Shorten text to max_px with '...' using measure(text)->pixels."""
+    if measure(text) <= max_px:
+        return text
+    while text and measure(text + '...') > max_px:
+        text = text[:-1]
+    return (text + '...') if text else '...'
+
+
+def double_click(previous, time, x, y, gap_ms=400, distance=6):
+    """True when this title-bar press repeats the previous one quickly."""
+    if previous is None:
+        return False
+    return abs(time - previous['time']) <= gap_ms and abs(x - previous['x']) <= distance \
+        and abs(y - previous['y']) <= distance
+
+
 # ---------------------------------------------------------------- X11 layer
 
 class XAny(c.Structure):
@@ -394,6 +411,7 @@ class Window:
         self._drag = None
         self._control_hover = None
         self._stashed = None
+        self._last_title_press = None
         self._dirty = True
         self._surface_for(width, height)
 
@@ -477,7 +495,8 @@ class Window:
             cairo.line_to(cr, 18, 20.1)
             cairo.close_path(cr)
             cairo.fill(cr)
-            tk.text(cr, self.title, 28, TITLE_HEIGHT - 9, PALETTE['text'], 12.0, True)
+            title = ellipsize(self.title, lambda s: tk.text_width(cr, s, 12.0, True), w - 120)
+            tk.text(cr, title, 28, TITLE_HEIGHT - 9, PALETTE['text'], 12.0, True)
             # Window controls at the right: - (minimize), square (maximize or
             # restore), x (close). Gray at rest, lit on hover; close reddens.
             for name, cx in (('min', w - 67), ('max', w - 41), ('close', w - 15)):
@@ -611,7 +630,14 @@ class Window:
                             self._maximize()
                             continue
                         if self.kind == 'toplevel' and y < TITLE_HEIGHT:
-                            self._drag = (x, y)
+                            press = {'time': event.button.time, 'x': x, 'y': y}
+                            if double_click(self._last_title_press, press['time'], x, y):
+                                self._last_title_press = None
+                                self._drag = None
+                                self._maximize()
+                            else:
+                                self._last_title_press = press
+                                self._drag = (x, y)
                         for item in self.buttons:
                             item.press(x, y)
                     elif kind == 5:
