@@ -72,16 +72,16 @@ class Layout(unittest.TestCase):
     def test_menu_geometry_and_item_hits(self):
         geometry = shell.menu_geometry(1024, 768, 3)
         self.assertEqual((geometry['x'], geometry['width']), (2, 320))
-        self.assertEqual(geometry['height'], 22 + 3 * 34)
+        self.assertEqual(geometry['height'], 26 + 3 * 36)
         self.assertEqual(geometry['y'], 768 - 24 - geometry['height'] - 2)
-        self.assertEqual(shell.item_at(3, 22 + 17), 0)
-        self.assertEqual(shell.item_at(3, 22 + 2 * 34 + 17), 2)
-        self.assertIsNone(shell.item_at(3, 22 + 3 * 34 + 20))
+        self.assertEqual(shell.item_at(3, 26 + 17), 0)
+        self.assertEqual(shell.item_at(3, 26 + 2 * 36 + 17), 2)
+        self.assertIsNone(shell.item_at(3, 26 + 3 * 36 + 20))
         clamped = shell.menu_geometry(1024, 100, 40)
         self.assertLessEqual(clamped['height'], 100 - 24 - 2)
 
     def test_consent_choice_zones(self):
-        rows = 22 + 2 * 34
+        rows = 26 + 2 * 36
         self.assertIsNone(shell.consent_choice(240, rows + 5, 2, False))
         self.assertEqual(shell.consent_choice(240, rows + 5, 2, True), 'allow')
         self.assertEqual(shell.consent_choice(300, rows + 5, 2, True), 'cancel')

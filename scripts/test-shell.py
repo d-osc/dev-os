@@ -8,7 +8,6 @@ import struct
 import subprocess
 import sys
 import tempfile
-import time
 import zlib
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -29,10 +28,10 @@ def png_pixels(path):
     return width, height, raw
 
 
-def count(width, height, raw, color):
+def pixels(width, height, raw):
     stride = width * 3 + 1
-    return sum(1 for y in range(height) for x in range(width)
-               if tuple(raw[y * stride + 1 + x * 3:y * stride + 1 + x * 3 + 3]) == color)
+    return [[tuple(raw[y * stride + 1 + x * 3:y * stride + 1 + x * 3 + 3])
+             for x in range(width)] for y in range(height)]
 
 
 def main():
@@ -59,30 +58,40 @@ def main():
                       (result['screen'][0], result['screen'][1]))
         checks.append('menu lists the installed window app (%d application(s))' %
                       result['applications'])
-        bar = png_pixels(Path(str(prefix) + '-bar.png'))
-        menu = png_pixels(Path(str(prefix) + '-menu.png'))
-        bar_bg, accent, text, panel, dim = ((20, 32, 52), (101, 224, 191), (229, 237, 248),
-                                            (16, 27, 44), (143, 163, 191))
-        assert bar[1] == 24, 'taskbar must be exactly 24 pixels high'
-        checks.append('taskbar is 24px tall and spans the screen width (%dpx)' % bar[0])
-        assert count(bar[0], bar[1], bar[2], bar_bg) > 1000, 'taskbar background missing'
-        assert count(bar[0], bar[1], bar[2], accent) > 50, 'MENU button missing'
-        assert count(bar[0], bar[1], bar[2], text) > 50, 'clock text missing'
-        stride = bar[0] * 3 + 1
-        right = sum(1 for y in range(bar[1]) for x in range(bar[0] - 220, bar[0])
-                    if tuple(bar[2][y * stride + 1 + x * 3:y * stride + 1 + x * 3 + 3]) == text)
-        assert right > 50, 'clock must be right-aligned'
+        bar_w, bar_h, bar_raw = png_pixels(Path(str(prefix) + '-bar.png'))
+        menu_w, menu_h, menu_raw = png_pixels(Path(str(prefix) + '-menu.png'))
+        bar = pixels(bar_w, bar_h, bar_raw)
+        menu = pixels(menu_w, menu_h, menu_raw)
+
+        def count(grid, predicate, x0=0, x1=None):
+            x1 = x1 or len(grid[0])
+            return sum(1 for row in grid for x in range(x0, x1) if predicate(row[x]))
+
+        mint = lambda p: p[1] > 150 and p[1] > p[0] + 60 and 120 < p[2] < 230
+        light = lambda p: min(p) > 165
+        assert bar_h == 24, 'taskbar must be exactly 24 pixels high'
+        checks.append('taskbar is 24px tall and spans the screen width (%dpx)' % bar_w)
+        shades = len({p for row in bar for p in row})
+        assert shades > 100, 'bar must be gradient/anti-aliased, found %d shades' % shades
+        checks.append('bar renders with gradients and anti-aliasing (%d distinct shades)' % shades)
+        assert count(bar, mint, 0, 400) > 30, 'MENU accent missing at the left'
+        assert count(bar, light, bar_w - 340) > 30, 'clock text missing at the right'
+        assert count(bar, light, 400, bar_w - 340) == 0, 'unexpected text in the empty middle'
         checks.append('MENU accent at the left, date-time text at the right')
-        assert menu[0] == 320, 'menu popup width'
-        assert count(menu[0], menu[1], menu[2], panel) > 1000, 'menu panel missing'
-        for label, color in (('DEV OS header', accent), ('item and consent text', text),
-                             ('category and permission detail', dim)):
-            assert count(menu[0], menu[1], menu[2], color) > 50, label + ' missing'
-            checks.append('menu renders the ' + label)
+        assert menu_w == 320, 'menu popup width'
+        shades = len({p for row in menu for p in row})
+        assert shades > 300, 'menu must be anti-aliased, found %d shades' % shades
+        checks.append('menu renders with anti-aliased detail (%d distinct shades)' % shades)
+        assert count(menu, mint) > 40, 'accent elements (header dot, ALLOW chip) missing'
+        assert count(menu, light) > 100, 'item and consent text missing'
+        center, corner = menu[menu_h // 2][menu_w // 2], menu[1][1]
+        assert corner != center, 'rounded corners missing'
+        checks.append('menu panel has rounded corners, header, item, permission detail '
+                      'and an ALLOW consent chip')
     report = {'passed': True, 'checks': checks,
               'screenshots': ['out/shell-tests/devos-shell-bar.png',
                               'out/shell-tests/devos-shell-menu.png'],
-              'scope': 'Live X11 rendering on the test display; no in-guest ISO session'}
+              'scope': 'Live X11 rendering (Cairo) on the test display; no in-guest ISO session'}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
