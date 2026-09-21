@@ -56,11 +56,14 @@ class Widgets(unittest.TestCase):
 
 class ShellHover(unittest.TestCase):
     def test_hover_key_on_bar(self):
-        self.assertEqual(shell.hover_key('bar', 3, 10), 'menu')
-        self.assertEqual(shell.hover_key('bar', 3, 10, task_count=2), 'menu')
-        self.assertEqual(shell.hover_key('bar', 100, 10, task_count=2), ('task', 0))
-        self.assertEqual(shell.hover_key('bar', 370, 10, task_count=2), ('task', 1))
-        self.assertIsNone(shell.hover_key('bar', 900, 10, task_count=2))
+        self.assertEqual(shell.hover_key('bar', 3, 10, width=1024), 'menu')
+        first = shell.pin_left(1024, 2)
+        self.assertEqual(shell.hover_key('bar', first + 5, 10, width=1024, app_count=2),
+                         ('app', 0))
+        self.assertEqual(shell.hover_key('bar', first + shell.PIN_SIZE + shell.PIN_GAP + 5, 10,
+                                         width=1024, app_count=2), ('app', 1))
+        self.assertIsNone(shell.hover_key('bar', 700, 10, width=1024, app_count=2))
+        self.assertIsNone(shell.hover_key('bar', 700, 10, width=1024))
 
     def test_hover_key_on_menu_items_and_consent(self):
         first = shell.MENU_HEADER_HEIGHT + 17

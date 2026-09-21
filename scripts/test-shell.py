@@ -63,21 +63,32 @@ def main():
         bar = pixels(bar_w, bar_h, bar_raw)
         menu = pixels(menu_w, menu_h, menu_raw)
 
-        def count(grid, predicate, x0=0, x1=None):
+        def count(grid, predicate, x0=0, x1=None, y0=0, y1=None):
             x1 = x1 or len(grid[0])
-            return sum(1 for row in grid for x in range(x0, x1) if predicate(row[x]))
+            y1 = y1 or len(grid)
+            return sum(1 for y in range(y0, y1) for x in range(x0, x1)
+                       if predicate(grid[y][x]))
 
         mint = lambda p: p[1] > 150 and p[1] > p[0] + 60 and 120 < p[2] < 230
         light = lambda p: min(p) > 165
-        assert bar_h == 24, 'taskbar must be exactly 24 pixels high'
-        checks.append('taskbar is 24px tall and spans the screen width (%dpx)' % bar_w)
+        gray = lambda p: 90 <= min(p) <= 150
+        red = lambda p: p[0] > 190 and p[1] < 120 and p[2] < 120
+        assert bar_h == 40, 'taskbar must be exactly 40 pixels high'
+        checks.append('taskbar is 40px tall and spans the screen width (%dpx)' % bar_w)
         shades = len({p for row in bar for p in row})
-        assert shades > 100, 'bar must be gradient/anti-aliased, found %d shades' % shades
-        checks.append('bar renders with gradients and anti-aliasing (%d distinct shades)' % shades)
-        assert count(bar, mint, 0, 400) > 30, 'MENU accent missing at the left'
-        assert count(bar, light, bar_w - 340) > 30, 'clock text missing at the right'
-        assert count(bar, light, 400, bar_w - 340) == 0, 'unexpected text in the empty middle'
-        checks.append('MENU accent at the left, date-time text at the right')
+        assert shades > 100, 'bar must be anti-aliased, found %d shades' % shades
+        checks.append('bar renders flat with anti-aliased glyphs (%d distinct shades)' % shades)
+        assert count(bar, mint, 0, 120) > 30, 'green >_ DEVOS start pill missing'
+        assert count(bar, gray, bar_w // 2 - 80, bar_w // 2 + 80) > 8, \
+            'centered pinned-app monogram missing'
+        assert result['pinned'] == 1, 'installed window app must be pinned'
+        assert count(bar, mint, bar_w - 180) > 8, 'green wifi tray glyph missing'
+        assert count(bar, red, bar_w - 180) > 4, 'red notification badge missing'
+        assert count(bar, light, bar_w - 140, None, 2, 20) > 20, 'clock time line missing'
+        assert count(bar, gray, bar_w - 140, None, 22, 38) > 8, 'clock date line missing'
+        assert count(bar, light, 130, bar_w - 160) == 0, 'unexpected bright text outside zones'
+        checks.append('green start pill, centered pinned icon, tray with wifi + red badge, '
+                      'two-line clock at the right')
         assert menu_w == 320, 'menu popup width'
         shades = len({p for row in menu for p in row})
         assert shades > 300, 'menu must be anti-aliased, found %d shades' % shades

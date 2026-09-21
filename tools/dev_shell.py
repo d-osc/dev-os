@@ -1,15 +1,20 @@
 #!/usr/bin/python3
-"""Dev OS desktop shell: a 24px taskbar with an application menu and clock.
+"""Dev OS desktop shell: the design taskbar, application menu and clock.
 
-Rendering and X11 plumbing come from the shared dev_gui toolkit (ctypes +
-Cairo): anti-aliased TrueType text, gradients, rounded corners, hover
-feedback. The bar reserves the bottom 24 pixels with EWMH struts; the menu is
-a translucent ARGB popup when the server offers that visual (evidence capture
-uses plain windows because the test display's XWayland cannot capture ARGB or
-override-redirect windows). Launching an app needs an explicit per-launch
-consent and then runs `dev launch <name> --allow <declared permissions>`: the
-shell never widens a permission set and keeps no grants. It is a normal user
-process for an X11 session; the OS image does not start it automatically yet.
+A flat near-black bar (40px) matching the reference design: a green-outlined
+`>_ DEVOS` start pill on the left, centered pinned-app icons with running
+dots and a blue active underline, decorative tray glyphs (wifi, volume,
+notifications) and a two-line clock on the right. Rendering and X11 plumbing
+come from the shared dev_gui toolkit (ctypes + Cairo): anti-aliased TrueType
+text, rounded corners, hover feedback. The bar reserves the bottom pixels
+with EWMH struts; the menu is a translucent ARGB popup when the server
+offers that visual (evidence capture uses plain windows because the test
+display's XWayland cannot capture ARGB or override-redirect windows).
+Clicking a pinned app focuses its window, or opens the consent row when none
+is open; launching then runs `dev launch <name> --allow <declared
+permissions>`: the shell never widens a permission set and keeps no grants.
+It is a normal user process for an X11 session; the OS image does not start
+it automatically yet.
 """
 import argparse
 import ctypes as c
@@ -23,10 +28,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.append('/usr/lib/devos')
 import dev_gui  # noqa: E402
 
-BAR_HEIGHT = 24
-MENU_BUTTON_WIDTH = 64
-TASK_BUTTON_WIDTH = 160
+BAR_HEIGHT = 40
+PILL_X, PILL_WIDTH = 8, 96
+MENU_END = PILL_X + PILL_WIDTH
+PIN_SIZE, PIN_GAP = 28, 10
+MAX_PINNED = 9
+TRAY_RESERVE = 220
 CLOCK_PAD = 10
+CLOCK_BLOCK = 68
+MONO = b'DejaVu Sans Mono'
 MENU_WIDTH = 320
 MENU_ITEM_HEIGHT = 36
 MENU_HEADER_HEIGHT = 26
@@ -34,7 +44,13 @@ CONSENT_HEIGHT = 52
 MENU_RADIUS = 12
 ALLOW_X, CANCEL_X = 214, 288
 PALETTE = dev_gui.PALETTE
-ACCENT = PALETTE['accent']
+# The reference design palette: flat near-black base, a green start accent,
+# a blue active-app underline and a red notification badge.
+DESIGN = {'bg': (0.043, 0.059, 0.086), 'line': (0.102, 0.125, 0.189),
+          'green': (0.180, 1.0, 0.561), 'blue': (0.0, 0.667, 1.0),
+          'white': (0.902, 0.918, 0.941), 'gray': (0.435, 0.502, 0.596),
+          'red': (1.0, 0.267, 0.267)}
+ACCENT = DESIGN['green']
 
 
 # ---------------------------------------------------------------- pure logic
@@ -65,8 +81,20 @@ def launch_command(dev, root, item):
     return base + ['launch', item['name'], '--allow', grant_for(item)]
 
 
-def clock_text(moment=None):
-    return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(moment))
+def time_text(moment=None):
+    return time.strftime('%H:%M:%S', time.localtime(moment))
+
+
+def date_text(moment=None):
+    return time.strftime('%b %d, %Y', time.localtime(moment)).upper()
+
+
+def monogram(item):
+    """The single-character glyph shown in a pinned app icon."""
+    for character in item['label']:
+        if character.isalnum():
+            return character.upper()
+    return '>'
 
 
 def truncate(text, measure, max_px):
@@ -78,19 +106,47 @@ def truncate(text, measure, max_px):
     return (text + '...') if text else '...'
 
 
-def bar_regions(width, clock, task_count=0):
+def pinned_count(total, width):
+    """How many pinned icons fit between the start pill and the tray."""
+    room = width - MENU_END - TRAY_RESERVE
+    return max(0, min(total, room // (PIN_SIZE + PIN_GAP), MAX_PINNED))
+
+
+def pin_left(width, count):
+    """Left edge of the centered pinned-icon group."""
+    span = count * PIN_SIZE + (count - 1) * PIN_GAP if count else 0
+    return (width - span) // 2
+
+
+def window_for(item, clients):
+    """The open window of a pinned app, if any; matched by title."""
+    label, name = item['label'].lower(), item['name'].lower()
+    for title, window in clients:
+        if label in title.lower() or name in title.lower():
+            return window
+    return None
+
+
+def pinned_states(items, clients):
+    """(running flags, first running index) for the pinned icons."""
+    windows = [window_for(item, clients) for item in items]
+    active = next((index for index, window in enumerate(windows) if window), None)
+    return [window is not None for window in windows], active
+
+
+def bar_regions(width, app_count=0):
     """Clickable spans of the bar: (kind, start, end, index)."""
-    regions = [('menu', 0, MENU_BUTTON_WIDTH, None)]
-    left = MENU_BUTTON_WIDTH + 1
-    for index in range(task_count):
-        regions.append(('task', left, left + TASK_BUTTON_WIDTH - 8, index))
-        left += TASK_BUTTON_WIDTH
-    regions.append(('clock', width - CLOCK_PAD * 2 - len(clock) * 6, width, None))
+    regions = [('menu', 0, MENU_END, None)]
+    left = pin_left(width, app_count)
+    for index in range(app_count):
+        regions.append(('app', left, left + PIN_SIZE, index))
+        left += PIN_SIZE + PIN_GAP
+    regions.append(('clock', width - CLOCK_PAD - CLOCK_BLOCK, width, None))
     return regions
 
 
-def bar_hit(width, clock, x, task_count=0):
-    for kind, start, end, index in bar_regions(width, clock, task_count):
+def bar_hit(width, x, app_count=0):
+    for kind, start, end, index in bar_regions(width, app_count):
         if start <= x < end:
             return kind, index
     return None, None
@@ -122,16 +178,12 @@ def consent_choice(x, y, item_count, consent):
     return None
 
 
-def hover_key(area, x, y, *, task_count=0, item_count=0, consent=False):
+def hover_key(area, x, y, *, width=0, app_count=0, item_count=0, consent=False):
     """Which actionable element the pointer is over, for hover feedback."""
     if area == 'bar':
-        if x < MENU_BUTTON_WIDTH:
-            return 'menu'
-        left = MENU_BUTTON_WIDTH + 1
-        for index in range(task_count):
-            if left <= x < left + TASK_BUTTON_WIDTH - 8:
-                return ('task', index)
-            left += TASK_BUTTON_WIDTH
+        for kind, start, end, index in bar_regions(width, app_count):
+            if start <= x < end and kind != 'clock':
+                return kind if index is None else (kind, index)
         return None
     index = item_at(item_count, y, consent)
     if index is None:
@@ -151,6 +203,55 @@ def load_database(root):
     if not isinstance(database, dict):
         raise SystemExit('Invalid installed package database')
     return database
+
+
+# ------------------------------------------------------------- tray glyphs
+
+def draw_wifi(cairo, cr, cx, cy):
+    cairo.set_rgba(cr, *DESIGN['green'], 1.0)
+    cairo.set_line_width(cr, 1.4)
+    cairo.new_sub_path(cr)
+    cairo.arc(cr, cx, cy + 3, 3.2, -2.36, -0.79)
+    cairo.stroke(cr)
+    cairo.new_sub_path(cr)
+    cairo.arc(cr, cx, cy + 3, 6.4, -2.45, -0.69)
+    cairo.stroke(cr)
+    cairo.arc(cr, cx, cy + 3, 1.2, 0, 6.2832)
+    cairo.fill(cr)
+
+
+def draw_volume(cairo, cr, cx, cy):
+    cairo.set_rgba(cr, *DESIGN['gray'], 1.0)
+    cairo.new_sub_path(cr)
+    cairo.move_to(cr, cx - 6, cy - 2)
+    cairo.line_to(cr, cx - 3, cy - 2)
+    cairo.line_to(cr, cx + 0.5, cy - 5.5)
+    cairo.line_to(cr, cx + 0.5, cy + 5.5)
+    cairo.line_to(cr, cx - 3, cy + 2)
+    cairo.line_to(cr, cx - 6, cy + 2)
+    cairo.close_path(cr)
+    cairo.fill(cr)
+    cairo.set_line_width(cr, 1.4)
+    cairo.new_sub_path(cr)
+    cairo.arc(cr, cx + 1.5, cy, 4.5, -0.85, 0.85)
+    cairo.stroke(cr)
+
+
+def draw_bell(cairo, cr, cx, cy):
+    cairo.set_rgba(cr, *DESIGN['gray'], 1.0)
+    cairo.new_sub_path(cr)
+    cairo.arc(cr, cx, cy - 0.5, 3.8, 3.1416, 6.2832)
+    cairo.line_to(cr, cx + 4.2, cy + 2.5)
+    cairo.line_to(cr, cx - 4.2, cy + 2.5)
+    cairo.close_path(cr)
+    cairo.fill(cr)
+    cairo.set_line_width(cr, 1.4)
+    cairo.new_sub_path(cr)
+    cairo.arc(cr, cx, cy + 2.5, 2.0, 0, 3.1416)
+    cairo.stroke(cr)
+    cairo.set_rgba(cr, *DESIGN['red'], 1.0)
+    cairo.arc(cr, cx + 4.5, cy - 4.5, 2.6, 0, 6.2832)
+    cairo.fill(cr)
 
 
 # ------------------------------------------------------------------- X11 side
@@ -192,7 +293,7 @@ def run(root, *, dev='dev', shots=None):
     height = api['display_height'](display, 0)
     root_window = api['root_window'](display, 0)
     bar = api['create'](display, root_window, 0, height - BAR_HEIGHT, width, BAR_HEIGHT,
-                        1, 0x142034, 0x142034)
+                        1, 0x0b0f16, 0x0b0f16)
     api['store_name'](display, bar, b'Dev OS Shell')
 
     # The menu prefers a 32-bit ARGB visual for true translucency; capture
@@ -209,7 +310,7 @@ def run(root, *, dev='dev', shots=None):
                                     info.visual, 1 | 2 | 0x400 | 0x800, c.byref(attributes))
         menu_visual = info.visual
     else:
-        menu = api['create'](display, root_window, 0, 0, 100, 100, 1, 0x101b2c, 0x101b2c)
+        menu = api['create'](display, root_window, 0, 0, 100, 100, 1, 0x10151d, 0x10151d)
         menu_visual = default_visual
     api['store_name'](display, menu, b'Dev OS Menu')
 
@@ -247,22 +348,24 @@ def run(root, *, dev='dev', shots=None):
             cairo.surface_set_size(menu_surface[0], w, h)
         return cr_menu[0]
 
-    def text(cr, content, px, py, color, size=12.0, bold=False, alpha=1.0):
+    def text(cr, content, px, py, color, size=12.0, bold=False, alpha=1.0, mono=False):
         cairo.font_size(cr, size)
-        cairo.font_face(cr, dev_gui.FONT, 0, 1 if bold else 0)
+        cairo.font_face(cr, MONO if mono else dev_gui.FONT, 0, 1 if bold else 0)
         cairo.set_rgba(cr, *color, alpha)
         cairo.move_to(cr, px, py)
         cairo.show_text(cr, content.encode('utf-8'))
 
     extents = dev_gui.TextExtents()
 
-    def measure(content, size=12.0, bold=False):
+    def measure(content, size=12.0, bold=False, mono=False):
         cairo.font_size(cr_bar, size)
-        cairo.font_face(cr_bar, dev_gui.FONT, 0, 1 if bold else 0)
+        cairo.font_face(cr_bar, MONO if mono else dev_gui.FONT, 0, 1 if bold else 0)
         cairo.text_extents(cr_bar, content.encode('utf-8'), c.byref(extents))
         return extents.x_advance
 
     items = applications(load_database(root))
+    pinned = items[:pinned_count(len(items), width)]
+    icons_left = pin_left(width, len(pinned))
     consent = None
     menu_open = False
     clock = ''
@@ -298,42 +401,68 @@ def run(root, *, dev='dev', shots=None):
 
     def draw_bar():
         nonlocal clock
-        gradient = cairo.pattern_linear(cr_bar, 0, 0, 0, BAR_HEIGHT)
-        cairo.pattern_stop(gradient, 0.0, *PALETTE['bar_low'], 1.0)
-        cairo.pattern_stop(gradient, 1.0, *PALETTE['bar_high'], 1.0)
-        cairo.set_source_pattern(cr_bar, gradient)
+        # Flat design: near-black base, hairline separator on the top edge.
+        cairo.set_rgba(cr_bar, *DESIGN['bg'], 1.0)
         cairo.paint(cr_bar)
-        cairo.set_rgba(cr_bar, *ACCENT, 0.30)
+        cairo.set_rgba(cr_bar, *DESIGN['line'], 1.0)
         cairo.set_line_width(cr_bar, 1)
         cairo.new_sub_path(cr_bar)
         cairo.line_to(cr_bar, 0, 0.5)
         cairo.line_to(cr_bar, width, 0.5)
         cairo.stroke(cr_bar)
-        # MENU pill button; brighter when hovered.
-        cairo.set_rgba(cr_bar, *ACCENT, 0.26 if hover[0] == 'menu' else 0.14)
-        cairo.rounded(cr_bar, 4, 3, MENU_BUTTON_WIDTH - 10, BAR_HEIGHT - 6, 8)
+        # Start pill: >_ DEVOS, outlined and labelled in the design green.
+        hovered = hover[0] == 'menu'
+        cairo.set_rgba(cr_bar, *DESIGN['green'], 0.16 if hovered else 0.07)
+        cairo.rounded(cr_bar, PILL_X, 7, PILL_WIDTH, BAR_HEIGHT - 14, 13)
         cairo.fill(cr_bar)
-        text(cr_bar, 'MENU', 16, 16, PALETTE['text'] if hover[0] == 'menu' else ACCENT,
-             11.0, True)
-        left = MENU_BUTTON_WIDTH + 1
+        cairo.set_rgba(cr_bar, *DESIGN['green'], 1.0 if hovered else 0.85)
+        cairo.set_line_width(cr_bar, 1.5)
+        cairo.rounded(cr_bar, PILL_X + 0.75, 7.75, PILL_WIDTH - 1.5, BAR_HEIGHT - 15.5, 12.25)
+        cairo.stroke(cr_bar)
+        label = '>_ DEVOS'
+        text(cr_bar, label, PILL_X + (PILL_WIDTH - measure(label, 11.0, True, True)) / 2, 24,
+             DESIGN['green'], 11.0, True, mono=True)
+        # Pinned app icons centered: monogram, running dot, active underline.
         tasks = clients()
-        room = int(max(0, (width - MENU_BUTTON_WIDTH - measure(clock_text(), 11.0) - 40)
-                       // TASK_BUTTON_WIDTH))
-        for index, (title, window) in enumerate(tasks[:room]):
-            hovered = hover[0] == ('task', index)
-            cairo.set_rgba(cr_bar, 1.0, 1.0, 1.0, 0.14 if hovered else 0.06)
-            cairo.rounded(cr_bar, left + 2, 3, TASK_BUTTON_WIDTH - 12, BAR_HEIGHT - 6, 7)
+        running, active = pinned_states(pinned, tasks)
+        for index, item in enumerate(pinned):
+            x, y = icons_left + index * (PIN_SIZE + PIN_GAP), 6
+            hovered = hover[0] == ('app', index)
+            cairo.set_rgba(cr_bar, 1.0, 1.0, 1.0,
+                           0.12 if index == active else 0.08 if hovered else 0.04)
+            cairo.rounded(cr_bar, x + 0.5, y + 0.5, PIN_SIZE - 1, PIN_SIZE - 1, 6)
             cairo.fill(cr_bar)
-            cairo.set_rgba(cr_bar, 1.0, 1.0, 1.0, 0.22 if hovered else 0.10)
-            cairo.set_line_width(cr_bar, 1)
-            cairo.rounded(cr_bar, left + 2.5, 3.5, TASK_BUTTON_WIDTH - 13, BAR_HEIGHT - 7, 7)
-            cairo.stroke(cr_bar)
-            label = truncate(' '.join(title.split()), lambda s: measure(s, 10.5),
-                             TASK_BUTTON_WIDTH - 28) or 'window'
-            text(cr_bar, label, left + 10, 16, PALETTE['text'], 10.5)
-            left += TASK_BUTTON_WIDTH
-        clock = clock_text()
-        text(cr_bar, clock, width - measure(clock, 11.0) - CLOCK_PAD, 16, PALETTE['text'], 11.0)
+            glyph = monogram(item)
+            text(cr_bar, glyph, x + PIN_SIZE / 2 - measure(glyph, 13.0, True) / 2, y + 18.5,
+                 DESIGN['white'] if index == active or hovered else DESIGN['gray'], 13.0, True)
+            if index == active:
+                cairo.set_rgba(cr_bar, *DESIGN['blue'], 1.0)
+                cairo.set_line_width(cr_bar, 2)
+                cairo.new_sub_path(cr_bar)
+                cairo.line_to(cr_bar, x + 8, y + PIN_SIZE - 4)
+                cairo.line_to(cr_bar, x + PIN_SIZE - 8, y + PIN_SIZE - 4)
+                cairo.stroke(cr_bar)
+            elif running[index]:
+                cairo.set_rgba(cr_bar, *DESIGN['white'], 0.8)
+                cairo.arc(cr_bar, x + PIN_SIZE / 2, y + PIN_SIZE - 4, 1.7, 0, 6.2832)
+                cairo.fill(cr_bar)
+        # Two-line clock, a separator, then the decorative tray glyphs.
+        clock = time_text()
+        date = date_text()
+        right = width - CLOCK_PAD
+        time_width, date_width = measure(clock, 13.0, True), measure(date, 8.5)
+        text(cr_bar, clock, right - time_width, 18, DESIGN['white'], 13.0, True)
+        text(cr_bar, date, right - date_width, 31, DESIGN['gray'], 8.5)
+        separator = right - max(time_width, date_width) - 14 + 0.5
+        cairo.set_rgba(cr_bar, *DESIGN['line'], 1.0)
+        cairo.set_line_width(cr_bar, 1)
+        cairo.new_sub_path(cr_bar)
+        cairo.line_to(cr_bar, separator, 10)
+        cairo.line_to(cr_bar, separator, BAR_HEIGHT - 10)
+        cairo.stroke(cr_bar)
+        draw_wifi(cairo, cr_bar, separator - 24, 20)
+        draw_volume(cairo, cr_bar, separator - 44, 20)
+        draw_bell(cairo, cr_bar, separator - 64, 20)
         cairo.surface_flush(bar_surface)
         api['flush'](display)
         return tasks
@@ -350,7 +479,7 @@ def run(root, *, dev='dev', shots=None):
         else:
             # Without alpha the desktop behind is simulated so the rounded
             # corners stay visible in captured evidence.
-            cairo.set_rgba(cr, *PALETTE['bar_low'], 1.0)
+            cairo.set_rgba(cr, *DESIGN['bg'], 1.0)
             cairo.paint(cr)
         cairo.set_rgba(cr, *PALETTE['panel'], 0.97)
         cairo.rounded(cr, 0, 0, w, h - 2, MENU_RADIUS)
@@ -422,14 +551,24 @@ def run(root, *, dev='dev', shots=None):
             elif kind in (4, 5, 6) and event.button.window == bar:
                 position = event.button
                 if kind == 6:
-                    hover[0] = hover_key('bar', position.x, position.y, task_count=len(tasks))
+                    hover[0] = hover_key('bar', position.x, position.y,
+                                         width=width, app_count=len(pinned))
                 elif kind == 4:
-                    hit, index = bar_hit(width, clock, position.x, len(tasks))
+                    hit, index = bar_hit(width, position.x, len(pinned))
                     if hit == 'menu':
                         open_menu(not menu_open)
-                    elif hit == 'task' and index < len(tasks):
-                        api['raise_window'](display, tasks[index][1])
-                        api['set_input_focus'](display, tasks[index][1], 1, 0)
+                    elif hit == 'app' and index is not None and index < len(pinned):
+                        target = pinned[index]
+                        window = window_for(target, tasks)
+                        if window:
+                            api['raise_window'](display, window)
+                            api['set_input_focus'](display, window, 1, 0)
+                        else:
+                            # A pinned app with no open window opens straight
+                            # into its consent row; Allow launches it as usual.
+                            open_menu(True)
+                            consent = target
+                            place_menu()
             elif kind in (4, 6) and event.button.window == menu:
                 position = event.button
                 if kind == 6:
@@ -470,7 +609,7 @@ def run(root, *, dev='dev', shots=None):
             screenshot(x, api, display, menu, shots[1], geometry['width'], geometry['height'])
             running = False
         time.sleep(0.2)
-    return {'screen': [width, height], 'applications': len(items)}
+    return {'screen': [width, height], 'applications': len(items), 'pinned': len(pinned)}
 
 
 def main():
