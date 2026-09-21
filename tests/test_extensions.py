@@ -105,5 +105,62 @@ class HostLifecycle(unittest.TestCase):
             self.assertIn('icon', host.report[0]['error'])
 
 
+class PainterAndWidgets(unittest.TestCase):
+    class Stub:
+        def __init__(self, chain):
+            self.chain = chain
+
+        def __getattr__(self, name):
+            def call(*arguments):
+                self.chain.append((name,) + arguments)
+            return call
+
+    def test_painter_helpers_translate_to_cairo_calls(self):
+        import ctypes as c
+        chain = []
+        stub = self.Stub(chain)
+        painter = extensions.Painter(stub, None, 100, 6, 40, 28,
+                                     {'text': (1, 1, 1), 'accent': (0, 1, 0.6)}, None)
+        painter.text('hi', 2, 3, 'text')
+        painter.rect(0, 0, 10, 10, 'accent', radius=2)
+        painter.line(0, 0, 5, 5)
+        painter.circle(4, 4, 2)
+        calls = [name for name, *_ in chain]
+        self.assertIn('show_text', calls)
+        self.assertIn('rounded', calls)
+        self.assertIn('stroke', calls)
+        self.assertIn('arc', calls)
+        moved = [arguments for name, *arguments in chain if name == 'move_to']
+        self.assertIn([None, 102.0, 9.0], moved)
+        colors = [arguments for name, *arguments in chain if name == 'set_rgba']
+        self.assertIn([None, 0, 1, 0.6, 1.0], colors)
+
+    def test_widget_panel_and_override_validation(self):
+        host = extensions.Host(provides())
+        host.add_widget('devos.demo', 'left', 64, lambda painter: None, None, 'w')
+        self.assertEqual(host.widgets[0]['width'], 64)
+        handle = host.add_panel('devos.demo', 'p', 240, 100, lambda painter: None,
+                                None, 8)
+        self.assertIsInstance(handle, extensions.PanelHandle)
+        handle.show()
+        self.assertEqual(handle.slot['request'], 'show')
+        host.set_clock_override('devos.demo', 120, lambda painter: None)
+        self.assertEqual(host.clock_override['width'], 120)
+        host.set_hidden('tray', True)
+        self.assertEqual(host.hidden, {'tray'})
+        host.set_hidden('tray', False)
+        self.assertEqual(host.hidden, set())
+        for bad in (('middle', 64, lambda p: None), ('left', 4, lambda p: None),
+                    ('left', 64, 'nope')):
+            with self.assertRaises(ValueError):
+                host.add_widget('devos.demo', bad[0], bad[1], bad[2], None, 'w')
+        with self.assertRaises(ValueError):
+            host.add_panel('devos.demo', 'p', 10, 100, lambda p: None, None, 8)
+        with self.assertRaises(ValueError):
+            host.set_clock_override('devos.demo', 10, lambda p: None)
+        with self.assertRaises(ValueError):
+            host.set_hidden('everything', True)
+
+
 if __name__ == '__main__':
     unittest.main()

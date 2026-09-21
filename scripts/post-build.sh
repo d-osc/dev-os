@@ -25,6 +25,8 @@ install -D -m 0644 "$project/examples/extensions/battery/manifest.json" "$target
 install -D -m 0644 "$project/examples/extensions/battery/extension.py" "$target/usr/share/devos/extensions/devos.battery/extension.py"
 install -D -m 0644 "$project/examples/extensions/theme-switch/manifest.json" "$target/usr/share/devos/extensions/devos.theme-switch/manifest.json"
 install -D -m 0644 "$project/examples/extensions/theme-switch/extension.py" "$target/usr/share/devos/extensions/devos.theme-switch/extension.py"
+install -D -m 0644 "$project/examples/extensions/dashboard/manifest.json" "$target/usr/share/devos/extensions/devos.dashboard/manifest.json"
+install -D -m 0644 "$project/examples/extensions/dashboard/extension.py" "$target/usr/share/devos/extensions/devos.dashboard/extension.py"
 install -D -m 0644 "$project/themes/dev-dark.json" "$target/usr/share/devos/themes/dev-dark.json"
 install -D -m 0644 "$project/themes/terminal-amber.json" "$target/usr/share/devos/themes/terminal-amber.json"
 install -D -m 0755 "$project/tools/dev_notifications.py" "$target/usr/lib/devos/dev_notifications.py"

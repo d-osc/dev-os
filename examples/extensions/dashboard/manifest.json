@@ -1,0 +1,8 @@
+{
+  "id": "devos.dashboard",
+  "name": "Dashboard",
+  "version": "1.0.0",
+  "description": "Memory widget on the taskbar with a details panel",
+  "engine": 1,
+  "main": "extension.py"
+}

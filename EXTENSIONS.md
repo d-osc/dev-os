@@ -30,27 +30,42 @@ extensions/devos.battery/
 - manifest จำกัด 4 KiB โค้ดจำกัด 64 KiB ตรวจอย่างเคร่งครัด — extension ที่พัง
   จะถูกรายงานและข้าม ไม่ทำให้ shell ตาย
 
-## API (รุ่น 1)
+## API (รุ่น 2 — custom GUI ได้ทุกระดับ)
 
 โค้ด extension เขียน `activate(api)` รับออบเจกต์ API (และ `deactivate()`
-ซึ่ง shell เรียกตอนออก):
+ซึ่ง shell เรียกตอนออก) draw callback ทุกตัวรับ **Painter**: พิกัด (0,0)
+คือมุมซ้ายบนของพื้นที่ตัวเอง มี `text/rect/line/circle/icon`, `text_width`,
+`width/height`, `colors` (พาเลตต์ธีมปัจจุบัน) และ `raw` (cairo, cr) สำหรับ
+เรียก Cairo ตรง ๆ ไม่จำกัด — callback ที่พังถูกจับไว้ วาดกรอบแดงแทน ไม่ทำให้
+shell ตาย
 
 ```python
 def activate(api):
-    api.register_command('devos.battery.status', 'Battery status',
-                         lambda: api.notify('Battery', summary()),
-                         'Power supply summary')
-    api.register_tray('battery', BOLT, command_id='devos.battery.status',
-                      color='accent')
+    panel = api.create_panel('devos.dashboard.panel', 260, 110, draw_panel, x=8)
+    api.register_widget('right', 100, draw_widget, on_click=panel.toggle)
+    api.override_clock(120, lambda p: p.text('OVERRIDE', 4, 25, 'red', 13, True))
+    api.hide('tray')
 ```
 
 | เมธอด | ความหมาย |
 |---|---|
-| `register_command(id, title, handler, detail='')` | เพิ่มคำสั่งในเมนูแอป คลิกแล้วเรียก `handler()` |
-| `register_tray(id, icon, command_id=None, color='accent')` | ไอคอนในถาด taskbar (คลิกได้) — `icon` เป็นชื่อไอคอนของธีม หรือ dict ไอคอนตามรูปแบบ [THEMES.md](THEMES.md); `color` เป็นชื่อ token สี |
-| `notify(title, body='')` | แจ้งเตือนบน desktop (ผ่านระบบ notification ของ OS) |
-| `set_theme(path)` | สลับธีมทั้ง desktop แบบสด ๆ |
-| `api.settings` / `api.theme` / `api.screen` | ข้อมูลอ่านอย่างเดียวของสภาพแวดล้อม |
+| `register_widget(zone, width, draw, on_click=None)` | แถบของตัวเองบน taskbar — `zone` เป็น `'left'` (ถัดไอคอนแอป) หรือ `'right'` (ก่อนถาด) กว้าง 8–320px คลิกได้ |
+| `create_panel(id, width, height, draw, on_event=None, x=8)` | แผงลอยเหนือ taskbar ที่ extension วาดเองทั้งหมด (webview ของเรา) — คืน handle ที่มี `show()/hide()/toggle()`; `on_event('click'/'hover', x, y)` รับเหตุการณ์เมาส์; คลิกนอกแผงปิดอัตโนมัติ |
+| `override_clock(width, draw)` | ทับการวาดนาฬิกาในตัวทั้งหมด (กว้าง 40–400px) |
+| `hide(section)` / `show(section)` | ซ่อน/คืนส่วน built-in: `'tray'` (ไอคอน wifi/ลำโพง/กระดิ่ง), `'clock'`, `'pinned'` — ผสมกับ widget เพื่อประกอบ taskbar แบบของตัวเองได้ |
+| `register_command(id, title, handler, detail='')` | คำสั่งในเมนูแอป |
+| `register_tray(id, icon, command_id=None, color='accent')` | ไอคอนถาดคลิกได้ (ชื่อไอคอนธีม หรือ dict ตาม [THEMES.md](THEMES.md)) |
+| `notify(title, body='')` | แจ้งเตือนบน desktop |
+| `set_theme(path)` | สลับธีมทั้ง desktop สด ๆ |
+| `api.settings` / `api.theme` / `api.screen` | ข้อมูลอ่านอย่างเดียว |
+
+ตัวอย่างครบทุกระดับอยู่ที่ `examples/extensions/dashboard` (widget RAM บน
+taskbar + แผงลอยรายละเอียด กด widget เพื่อเปิด/ปิด)
+
+## API รุ่น 1 (ยังรองรับ)
+
+`register_command`, `register_tray`, `notify`, `set_theme`, `settings/theme/screen`
+— ดูตัวอย่าง `examples/extensions/battery` และ `examples/extensions/theme-switch`
 
 ## เรื่อง JS/TS (สำคัญ)
 
@@ -71,6 +86,8 @@ host — การติดตั้ง extension คือความยิน
 ## การตรวจสอบ
 
 `tests/test_extensions.py` ครอบ manifest validation, วงจร activate/deactivate,
-การรันคำสั่ง, และกรณี extension พัง (261 unit tests ผ่านทั้ง Windows/Linux)
-`scripts/test-extensions.py` พิสูจน์บน display จริง: extension ถูกโหลด
-`activate()` รันจริง (เขียนไฟล์หลักฐาน) คำสั่งลงเมนู และไอคอนถาดวาดจริงบนจอ
+การรันคำสั่ง, Painter, widget/panel/override validation และกรณี extension พัง
+(263 unit tests ผ่านทั้ง Windows/Linux) สองสคริปต์พิสูจน์บน display จริง:
+`scripts/test-extensions.py` (โหลด + คำสั่ง + ไอคอนถาด) และ
+`scripts/test-gui-extensions.py` (custom widget + clock override + hide + แผงลอย
+ตรวจด้วยพิกเซล)

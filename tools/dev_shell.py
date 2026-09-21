@@ -388,6 +388,24 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     clock = ''
     hover = [None]
     tray_right = [None]
+    widget_zones = [[]]
+    widget_end = [0]
+    panel_state = {}
+
+    def hidden(section):
+        return bool(host and section in host.hidden)
+
+    def paint_extension(draw, x, y, w, h, tag):
+        """Run one extension draw callback with a Painter; never fatal."""
+        painter = dev_extensions.Painter(cairo, cr_bar, x, y, w, h,
+                                         dev_gui.THEME_COLORS, extents)
+        try:
+            draw(painter)
+        except Exception as error:
+            print('extension %s failed to draw: %s' % (tag, error), file=sys.stderr)
+            cairo.set_rgba(cr_bar, 1.0, 0.27, 0.27, 0.35)
+            cairo.rounded(cr_bar, x, y, w, h, 4)
+            cairo.fill(cr_bar)
 
     def clients():
         found = []
@@ -453,7 +471,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         # Pinned app icons after the pill: monogram, running dot, active line.
         tasks = clients()
         running, active = pinned_states(pinned, tasks)
-        for index, item in enumerate(pinned):
+        for index, item in enumerate(() if hidden('pinned') else pinned):
             x, y = icons_left + index * (PIN_SIZE + PIN_GAP), 6
             hovered = hover[0] == ('app', index)
             cairo.set_rgba(cr_bar, 1.0, 1.0, 1.0,
@@ -476,14 +494,24 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 cairo.set_rgba(cr_bar, *DESIGN['white'], 0.8)
                 cairo.arc(cr_bar, x + PIN_SIZE / 2, y + PIN_SIZE - 4, 1.7, 0, 6.2832)
                 cairo.fill(cr_bar)
-        # Two-line clock, a separator, then the decorative tray glyphs.
+        # Two-line clock (or an extension override), separator, tray glyphs.
         clock = time_text(settings=settings)
         date = date_text(settings=settings)
         right = width - CLOCK_PAD
         time_width, date_width = measure(clock, 13.0, True), measure(date, 8.5)
-        text(cr_bar, clock, right - time_width, 18, DESIGN['white'], 13.0, True)
-        text(cr_bar, date, right - date_width, 31, DESIGN['gray'], 8.5)
-        separator = right - max(time_width, date_width) - 14 + 0.5
+        clock_width = 0
+        override = host.clock_override if host else None
+        if hidden('clock'):
+            pass
+        elif override:
+            clock_width = override['width']
+            paint_extension(override['draw'], right - clock_width, 0, clock_width,
+                            BAR_HEIGHT, override['ext'] + ':clock')
+        else:
+            clock_width = max(time_width, date_width)
+            text(cr_bar, clock, right - time_width, 18, DESIGN['white'], 13.0, True)
+            text(cr_bar, date, right - date_width, 31, DESIGN['gray'], 8.5)
+        separator = right - clock_width - 14 + 0.5
         cairo.set_rgba(cr_bar, *DESIGN['sep'], 1.0)
         cairo.set_line_width(cr_bar, 1)
         cairo.new_sub_path(cr_bar)
@@ -492,12 +520,13 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         cairo.stroke(cr_bar)
         draw_icon = dev_theme.draw_icon
         colors = dev_gui.THEME_COLORS
-        draw_icon(cairo, cr_bar, dev_gui.ICONS['wifi'], separator - 32, 12,
-                  DESIGN['green'], colors, 1.4)
-        draw_icon(cairo, cr_bar, dev_gui.ICONS['volume'], separator - 52, 12,
-                  DESIGN['gray'], colors, 1.4)
-        draw_icon(cairo, cr_bar, dev_gui.ICONS['bell'], separator - 72, 12,
-                  DESIGN['gray'], colors, 1.4)
+        if not hidden('tray'):
+            draw_icon(cairo, cr_bar, dev_gui.ICONS['wifi'], separator - 32, 12,
+                      DESIGN['green'], colors, 1.4)
+            draw_icon(cairo, cr_bar, dev_gui.ICONS['volume'], separator - 52, 12,
+                      DESIGN['gray'], colors, 1.4)
+            draw_icon(cairo, cr_bar, dev_gui.ICONS['bell'], separator - 72, 12,
+                      DESIGN['gray'], colors, 1.4)
         tray_right[0] = None
         if host and host.tray:
             tray_right[0] = separator - TRAY_LEFT
@@ -506,6 +535,32 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 dev_theme.draw_icon(cairo, cr_bar, icon,
                                     tray_right[0] - TRAY_PITCH * index - TRAY_SIZE, 12,
                                     colors[item['color']], colors, 1.4)
+        widget_end[0] = MENU_END + SEPARATOR_OFF + 4
+        if pinned and not hidden('pinned'):
+            widget_end[0] = PIN_START + len(pinned) * (PIN_SIZE + PIN_GAP)
+        widget_zones[0] = []
+        if host:
+            base = separator - TRAY_LEFT - TRAY_PITCH * len(host.tray)
+            for index, widget in enumerate(host.widgets):
+                if widget['zone'] != 'right':
+                    continue
+                base -= widget['width']
+                if base < widget_end[0] + 24:
+                    break
+                paint_extension(widget['draw'], base, 0, widget['width'], BAR_HEIGHT,
+                                widget['ext'] + ':' + widget['id'])
+                widget_zones[0].append((base, base + widget['width'], index))
+                base -= 12
+            cursor = widget_end[0]
+            for index, widget in enumerate(host.widgets):
+                if widget['zone'] != 'left':
+                    continue
+                if cursor + widget['width'] > base - 40:
+                    break
+                paint_extension(widget['draw'], cursor, 0, widget['width'], BAR_HEIGHT,
+                                widget['ext'] + ':' + widget['id'])
+                widget_zones[0].append((cursor, cursor + widget['width'], index))
+                cursor += widget['width'] + 12
         cairo.surface_flush(bar_surface)
         api['flush'](display)
         return tasks
@@ -578,6 +633,60 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         cairo.surface_flush(menu_surface[0])
         api['flush'](display)
 
+    def panel_window(handle):
+        """Create (once) the override-redirect window behind a panel."""
+        spec = handle.spec
+        y = height - BAR_HEIGHT - spec['height'] - 8
+        info = dev_gui.VisualInfo()
+        visual = default_visual
+        if shots is None and api['match_visual'](display, 0, 32, 4, c.byref(info)):
+            colormap = api['create_colormap'](display, root_window, info.visual, 0)
+            attributes = dev_gui.SetWindowAttributes(border_pixel=0, colormap=colormap,
+                                                     override_redirect=1, event_mask=1 << 15)
+            window = api['create_window'](display, root_window, spec['x'], y,
+                                          spec['width'], spec['height'], 0, 32, 1,
+                                          info.visual, 1 | 2 | 0x400 | 0x800,
+                                          c.byref(attributes))
+            visual = info.visual
+        else:
+            window = api['create'](display, root_window, spec['x'], y, spec['width'],
+                                   spec['height'], 1, 0x10151d, 0x10151d)
+        api['store_name'](display, window, ('Dev OS Panel ' + spec['id']).encode())
+        api['select_input'](display, window, (1 << 15) | (1 << 2) | (1 << 6))
+        surface = cairo.surface_create(display, window, visual, spec['width'], spec['height'])
+        return {'window': window, 'surface': surface, 'cr': cairo.create(surface)}
+
+    def service_panels():
+        """Apply show/hide requests and repaint the visible panels."""
+        if not host:
+            return
+        for handle in host.panels:
+            request = handle.slot['request']
+            handle.slot['request'] = None
+            state = panel_state.get(handle.spec['id'])
+            if request in ('show', 'toggle') and not handle.slot['visible']:
+                if state is None:
+                    state = panel_state[handle.spec['id']] = panel_window(handle)
+                api['map'](display, state['window'])
+                api['grab_pointer'](display, state['window'], 0, 1 << 2, 1, 1, 0, 0, 0)
+                handle.slot['visible'] = True
+            elif request in ('hide', 'toggle') and handle.slot['visible'] and state:
+                api['ungrab_pointer'](display, 0)
+                api['unmap'](display, state['window'])
+                handle.slot['visible'] = False
+            if handle.slot['visible'] and state:
+                painter = dev_extensions.Painter(cairo, state['cr'], 0, 0,
+                                                 handle.spec['width'],
+                                                 handle.spec['height'],
+                                                 dev_gui.THEME_COLORS, extents)
+                try:
+                    handle.spec['draw'](painter)
+                except Exception as error:
+                    print('extension %s panel failed to draw: %s'
+                          % (handle.spec['id'], error), file=sys.stderr)
+                cairo.surface_flush(state['surface'])
+        api['flush'](display)
+
     api['select_input'](display, bar, (1 << 15) | (1 << 2) | (1 << 3) | (1 << 6))
     api['select_input'](display, menu, (1 << 15) | (1 << 2) | (1 << 6))
     api['select_input'](display, root_window, 1 << 18)
@@ -605,8 +714,22 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                                          app_count=len(pinned), tray_right=tray_right[0],
                                          tray_count=tray_count)
                 elif kind == 4:
+                    for panel_handle in (host.panels if host else []):
+                        if panel_handle.slot['visible']:
+                            panel_handle.slot['request'] = 'hide'
                     hit, index = bar_hit(width, position.x, len(pinned),
                                          tray_right[0], tray_count)
+                    if hit is None and host:
+                        for start, end, widget_index in widget_zones[0]:
+                            if start <= position.x < end:
+                                widget = host.widgets[widget_index]
+                                if widget['on_click']:
+                                    try:
+                                        widget['on_click']()
+                                    except Exception as error:
+                                        print('widget %s failed: %s'
+                                              % (widget['id'], error), file=sys.stderr)
+                                break
                     if hit == 'tray' and host and index < len(host.tray):
                         try:
                             host.tray_click(index)
@@ -626,6 +749,20 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                             open_menu(True)
                             consent = target
                             place_menu()
+            elif host and kind in (4, 6) and any(
+                    event.button.window == state['window']
+                    for state in panel_state.values()):
+                action = 'click' if kind == 4 else 'hover'
+                for handle in host.panels:
+                    state = panel_state.get(handle.spec['id'])
+                    if not state or state['window'] != event.button.window:
+                        continue
+                    if handle.spec['on_event']:
+                        try:
+                            handle.spec['on_event'](action, event.button.x, event.button.y)
+                        except Exception as error:
+                            print('panel %s failed: %s' % (handle.spec['id'], error),
+                                  file=sys.stderr)
             elif kind in (4, 6) and event.button.window == menu:
                 position = event.button
                 if kind == 6:
@@ -678,13 +815,27 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             draw_menu(geometry)
             api['sync'](display, 0)
             screenshot(x, api, display, menu, shots[1], geometry['width'], geometry['height'])
+            for handle in (host.panels if host else []):
+                if handle.slot['visible']:
+                    state = panel_state[handle.spec['id']]
+                    api['sync'](display, 0)
+                    screenshot(x, api, display, state['window'],
+                               shots[0].rsplit('-bar', 1)[0] + '-panel.png',
+                               handle.spec['width'], handle.spec['height'])
+                    break
             running = False
+        service_panels()
         time.sleep(0.2)
-    counts = (list(host.loaded), len(host.commands)) if host else ([], 0)
+    counts = (list(host.loaded), len(host.commands), len(host.widgets),
+              len(host.panels)) if host else ([], 0, 0, 0)
     if host:
+        for handle in host.panels:
+            handle.slot['request'] = 'hide'
+        service_panels()
         host.unload()
     return {'screen': [width, height], 'applications': len(apps), 'pinned': len(pinned),
-            'theme': theme['name'], 'extensions': counts[0], 'commands': counts[1]}
+            'theme': theme['name'], 'extensions': counts[0], 'commands': counts[1],
+            'widgets': counts[2], 'panels': counts[3]}
 
 
 def main():
