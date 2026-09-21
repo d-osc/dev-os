@@ -18,6 +18,8 @@ install -D -m 0644 "$project/tools/dev_preserve.py" "$target/usr/lib/devos/dev_p
 install -D -m 0644 "$project/tools/dev_deploy.py" "$target/usr/lib/devos/dev_deploy.py"
 install -D -m 0644 "$project/tools/dev_gui.py" "$target/usr/lib/devos/dev_gui.py"
 install -D -m 0644 "$project/tools/dev_theme.py" "$target/usr/lib/devos/dev_theme.py"
+install -D -m 0644 "$project/tools/dev_settings.py" "$target/usr/lib/devos/dev_settings.py"
+install -D -m 0644 "$project/config/settings.json" "$target/etc/devos/settings.json"
 install -D -m 0644 "$project/themes/dev-dark.json" "$target/usr/share/devos/themes/dev-dark.json"
 install -D -m 0644 "$project/themes/terminal-amber.json" "$target/usr/share/devos/themes/terminal-amber.json"
 install -D -m 0755 "$project/tools/dev_notifications.py" "$target/usr/lib/devos/dev_notifications.py"

@@ -28,6 +28,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.append('/usr/lib/devos')
 import dev_gui  # noqa: E402
+import dev_settings  # noqa: E402
 import dev_theme  # noqa: E402
 
 BAR_HEIGHT = 40
@@ -90,12 +91,18 @@ def launch_command(dev, root, item):
     return base + ['launch', item['name'], '--allow', grant_for(item)]
 
 
-def time_text(moment=None):
-    return time.strftime('%H:%M:%S', time.localtime(moment))
+def time_text(moment=None, settings=None):
+    settings = settings or {}
+    if settings.get('clock.hour12'):
+        pattern = '%I:%M:%S %p' if settings.get('clock.showSeconds', True) else '%I:%M %p'
+    else:
+        pattern = '%H:%M:%S' if settings.get('clock.showSeconds', True) else '%H:%M'
+    return time.strftime(pattern, time.localtime(moment))
 
 
-def date_text(moment=None):
-    return time.strftime('%b %d, %Y', time.localtime(moment)).upper()
+def date_text(moment=None, settings=None):
+    pattern = (settings or {}).get('clock.dateFormat') or '%b %d, %Y'
+    return time.strftime(pattern, time.localtime(moment)).upper()
 
 
 def monogram(item):
@@ -237,18 +244,23 @@ def property_windows(x, api, display, root, name):
         x.XFree(data.value)
 
 
-def theme_from(path):
-    """--theme flag > DEVOS_THEME > the installed theme > built-in default."""
+def theme_from(path, settings=None, settings_dir=None):
+    """--theme flag > DEVOS_THEME > the settings file > built-in default."""
     source = path or os.environ.get('DEVOS_THEME')
     if source:
         return dev_theme.load(source), source
-    installed = Path('/usr/share/devos/themes/dev-dark.json')
-    if installed.is_file():
-        return dev_theme.load(installed), str(installed)
-    return dev_gui.DEFAULT_THEME, None
+    value = (settings or {}).get('theme', 'dev-dark')
+    if value == 'default':
+        return dev_gui.DEFAULT_THEME, None
+    dirs = ((settings_dir / 'themes',) if settings_dir else ()) + dev_settings.THEME_DIRS
+    resolved = dev_settings.theme_path(value, dirs)
+    if resolved is None:
+        return dev_gui.DEFAULT_THEME, None
+    return dev_theme.load(resolved), str(resolved)
 
 
-def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
+def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=None):
+    settings = settings or {}
     if theme is None:
         theme, theme_source = dev_gui.DEFAULT_THEME, None
     apply_theme(theme)
@@ -428,8 +440,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
                 cairo.arc(cr_bar, x + PIN_SIZE / 2, y + PIN_SIZE - 4, 1.7, 0, 6.2832)
                 cairo.fill(cr_bar)
         # Two-line clock, a separator, then the decorative tray glyphs.
-        clock = time_text()
-        date = date_text()
+        clock = time_text(settings=settings)
+        date = date_text(settings=settings)
         right = width - CLOCK_PAD
         time_width, date_width = measure(clock, 13.0, True), measure(date, 8.5)
         text(cr_bar, clock, right - time_width, 18, DESIGN['white'], 13.0, True)
@@ -573,8 +585,10 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
                     if choice == 'allow':
                         environment = dict(os.environ)
                         if THEME_SOURCE[0]:
-                            # Launched apps inherit the active theme file.
+                            # Launched apps inherit the active theme and font.
                             environment['DEVOS_THEME'] = THEME_SOURCE[0]
+                        environment['DEVOS_FONT'] = settings.get(
+                            'font.family', dev_settings.DEFAULTS['font.family'])
                         subprocess.Popen(launch_command(dev, root, consent),
                                          start_new_session=True, env=environment,
                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -606,15 +620,20 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
             screenshot(x, api, display, menu, shots[1], geometry['width'], geometry['height'])
             running = False
         time.sleep(0.2)
-    return {'screen': [width, height], 'applications': len(items), 'pinned': len(pinned)}
+    return {'screen': [width, height], 'applications': len(items), 'pinned': len(pinned),
+            'theme': theme['name']}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', default='/', help='target root (default: /)')
     parser.add_argument('--dev', default='dev', help='dev command used for launches')
+    parser.add_argument('--settings', type=Path,
+                        help='settings.json override (default: /etc then ~/.config/devos, '
+                             'or $DEVOS_SETTINGS)')
     parser.add_argument('--theme', type=Path,
-                        help='JSON theme file (default: $DEVOS_THEME or the installed theme)')
+                        help='theme file or name overriding the settings ('
+                             'default: $DEVOS_THEME or the settings theme)')
     parser.add_argument('--screenshot-prefix', type=Path,
                         help='capture bar and menu PNGs once, then exit')
     args = parser.parse_args()
@@ -623,11 +642,14 @@ def main():
         args.screenshot_prefix.parent.mkdir(parents=True, exist_ok=True)
         shots = (str(args.screenshot_prefix) + '-bar.png', str(args.screenshot_prefix) + '-menu.png')
     try:
-        theme, theme_source = theme_from(args.theme)
+        settings = dev_settings.active(args.settings or os.environ.get('DEVOS_SETTINGS'))
+        settings_dir = args.settings.parent if args.settings else None
+        theme, theme_source = theme_from(args.theme, settings, settings_dir)
     except (OSError, ValueError) as error:
-        raise SystemExit('Could not load theme: %s' % error)
-    result = run(args.root, dev=args.dev, shots=shots,
-                 theme=theme, theme_source=theme_source)
+        raise SystemExit('Could not load settings or theme: %s' % error)
+    dev_gui.set_font(settings['font.family'])
+    result = run(args.root, dev=args.dev, shots=shots, theme=theme,
+                 theme_source=theme_source, settings=settings)
     print(json.dumps(result))
     if shots:
         print('Screenshots: ' + ' '.join(shots))

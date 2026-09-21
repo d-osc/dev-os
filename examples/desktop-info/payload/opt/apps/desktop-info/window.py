@@ -65,6 +65,9 @@ def main():
     except (OSError, ValueError, IndexError) as error:
         raise SystemExit('Could not load theme: %s' % error)
     dev_gui.set_theme(theme)
+    font = os.environ.get('DEVOS_FONT')
+    if font:
+        dev_gui.set_font(font)
     rows = collect()
     toolkit = dev_gui.Toolkit()
     window = dev_gui.Window(toolkit, 380, 230, title='Dev OS — System Info', x=140, y=120)

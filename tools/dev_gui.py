@@ -37,6 +37,12 @@ def set_theme(theme):
     CORNERS.update(theme['corners'])
 
 
+def set_font(family):
+    """Use this font family for all toolkit and shell text."""
+    global FONT
+    FONT = family.encode('ascii')
+
+
 # ------------------------------------------------- pure widget/state logic
 
 def click_completes(pressed_inside, released_inside):

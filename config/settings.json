@@ -1,0 +1,7 @@
+{
+  "theme": "dev-dark",
+  "clock.hour12": false,
+  "clock.showSeconds": true,
+  "clock.dateFormat": "%b %d, %Y",
+  "font.family": "DejaVu Sans"
+}

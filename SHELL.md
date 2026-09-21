@@ -8,7 +8,8 @@ hairline และความโปร่งใสจริงบน visual 32-
 
 สีและไอคอนทั้งระบบ (shell + หน้าต่างแอป) สลับได้ด้วยไฟล์ JSON แบบ VS Code —
 ดูรูปแบบไฟล์และ token ทั้งหมดที่ [THEMES.md](THEMES.md) (`dev-shell --theme
-themes/terminal-amber.json`)
+themes/terminal-amber.json`) ส่วนการตั้งค่าใช้งาน (ธีมที่ใช้, รูปแบบนาฬิกา, ฟอนต์)
+อยู่ใน `settings.json` ตาม [SETTINGS.md](SETTINGS.md)
 
 ## Toolkit กลาง dev_gui
 

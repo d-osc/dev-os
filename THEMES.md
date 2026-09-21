@@ -12,8 +12,11 @@ dev-shell --theme themes/terminal-amber.json    # ระบุไฟล์ตร
 DEVOS_THEME=themes/terminal-amber.json dev-shell   # หรือผ่านตัวแปรสภาพแวดล้อม
 ```
 
-ลำดับการหาธีม: ธง `--theme` > ตัวแปร `DEVOS_THEME` >
-`/usr/share/devos/themes/dev-dark.json` (ถ้ามี) > ธีม built-in
+วิธีถาวรกว่านั้นคือตั้ง `"theme": "terminal-amber"` ใน `settings.json`
+(ดู [SETTINGS.md](SETTINGS.md)) — ธีมที่ใช้กับทั้ง desktop โหลดอัตโนมัติทุกครั้งที่เปิด
+
+ลำดับการหาธีม: ธง `--theme` > ตัวแปร `DEVOS_THEME` > คีย์ `theme` ใน
+settings.json > built-in
 
 แอปที่ shell เปิดผ่านเมนู (กด ALLOW) จะได้ตัวแปร `DEVOS_THEME` ชี้ไปที่ไฟล์ธีม
 เดียวกันโดยอัตโนมัติ — ธีมจึงต่อเนื่องจาก taskbar ไปถึงหน้าต่างแอป; แอปก็รับธีมเอง
