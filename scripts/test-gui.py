@@ -68,6 +68,10 @@ def main():
         controls = count(width, height, raw, glyph, width - 84, 2, width - 2, 28)
         assert controls > 40, 'minimize/maximize/close glyphs missing'
         checks.append('title-bar controls (- [] x) rendered and hit-testable')
+        chrome = lambda p: abs(p[0] - 17) <= 4 and abs(p[1] - 24) <= 4 and abs(p[2] - 39) <= 4
+        bleed = count(width, height, raw, chrome, 4, 32, width - 4, 39)
+        assert bleed == 0, 'title chrome bleeds past the separator'
+        checks.append('title plate ends exactly at the separator line')
         assert count(width, height, raw, light) > 300, 'value text missing'
         assert count(width, height, raw, dim) > 100, 'heading text missing'
         checks.append('System Info rows (Version/Kernel/Memory/Uptime) rendered')

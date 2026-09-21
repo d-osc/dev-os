@@ -248,6 +248,17 @@ class Cairo:
         self.arc(cr, x + radius, y + radius, radius, 2 * half, 3 * half)
         self.close_path(cr)
 
+    def rounded_top(self, cr, x, y, width, height, radius):
+        """A plate with rounded top corners and a flat bottom edge."""
+        import math
+        half = math.pi / 2
+        self.new_sub_path(cr)
+        self.move_to(cr, x, y + height)
+        self.arc(cr, x + radius, y + radius, radius, math.pi, 3 * half)
+        self.arc(cr, x + width - radius, y + radius, radius, -half, 0)
+        self.line_to(cr, x + width, y + height)
+        self.close_path(cr)
+
 
 class Toolkit:
     """One X connection with Cairo shared by every window of a process."""
@@ -473,7 +484,7 @@ class Window:
             # Flat title plate closed by a separator hairline, the green >_
             # prompt mark, the title, and a close glyph that reddens on hover.
             cairo.set_rgba(cr, *PALETTE['chrome'], 1.0)
-            cairo.rounded(cr, 0, 0, w, TITLE_HEIGHT + RADIUS, RADIUS)
+            cairo.rounded_top(cr, 0, 0, w, TITLE_HEIGHT, RADIUS)
             cairo.fill(cr)
             cairo.set_rgba(cr, *PALETTE['line'], 1.0)
             cairo.set_line_width(cr, 1)
