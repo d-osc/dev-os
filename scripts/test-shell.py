@@ -79,16 +79,15 @@ def main():
         assert shades > 100, 'bar must be anti-aliased, found %d shades' % shades
         checks.append('bar renders flat with anti-aliased glyphs (%d distinct shades)' % shades)
         assert count(bar, mint, 0, 120) > 30, 'green >_ DEVOS start pill missing'
-        assert count(bar, gray, bar_w // 2 - 80, bar_w // 2 + 80) > 8, \
-            'centered pinned-app monogram missing'
+        assert count(bar, gray, 104, 220) > 8, 'pinned-app monogram missing left of center'
         assert result['pinned'] == 1, 'installed window app must be pinned'
         assert count(bar, mint, bar_w - 180) > 8, 'green wifi tray glyph missing'
         assert count(bar, red, bar_w - 180) > 4, 'red notification badge missing'
         assert count(bar, light, bar_w - 140, None, 2, 20) > 20, 'clock time line missing'
         assert count(bar, gray, bar_w - 140, None, 22, 38) > 8, 'clock date line missing'
         assert count(bar, light, 130, bar_w - 160) == 0, 'unexpected bright text outside zones'
-        checks.append('green start pill, centered pinned icon, tray with wifi + red badge, '
-                      'two-line clock at the right')
+        checks.append('green start pill, left-anchored pinned icon, tray with wifi + red '
+                      'badge, two-line clock at the right')
         assert menu_w == 320, 'menu popup width'
         shades = len({p for row in menu for p in row})
         assert shades > 300, 'menu must be anti-aliased, found %d shades' % shades

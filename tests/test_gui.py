@@ -57,7 +57,7 @@ class Widgets(unittest.TestCase):
 class ShellHover(unittest.TestCase):
     def test_hover_key_on_bar(self):
         self.assertEqual(shell.hover_key('bar', 3, 10, width=1024), 'menu')
-        first = shell.pin_left(1024, 2)
+        first = shell.PIN_START
         self.assertEqual(shell.hover_key('bar', first + 5, 10, width=1024, app_count=2),
                          ('app', 0))
         self.assertEqual(shell.hover_key('bar', first + shell.PIN_SIZE + shell.PIN_GAP + 5, 10,

@@ -31,6 +31,8 @@ import dev_gui  # noqa: E402
 BAR_HEIGHT = 40
 PILL_X, PILL_WIDTH = 8, 96
 MENU_END = PILL_X + PILL_WIDTH
+PIN_PAD = 16
+PIN_START = MENU_END + PIN_PAD
 PIN_SIZE, PIN_GAP = 28, 10
 MAX_PINNED = 9
 TRAY_RESERVE = 220
@@ -108,14 +110,8 @@ def truncate(text, measure, max_px):
 
 def pinned_count(total, width):
     """How many pinned icons fit between the start pill and the tray."""
-    room = width - MENU_END - TRAY_RESERVE
+    room = width - PIN_START - TRAY_RESERVE
     return max(0, min(total, room // (PIN_SIZE + PIN_GAP), MAX_PINNED))
-
-
-def pin_left(width, count):
-    """Left edge of the centered pinned-icon group."""
-    span = count * PIN_SIZE + (count - 1) * PIN_GAP if count else 0
-    return (width - span) // 2
 
 
 def window_for(item, clients):
@@ -137,7 +133,7 @@ def pinned_states(items, clients):
 def bar_regions(width, app_count=0):
     """Clickable spans of the bar: (kind, start, end, index)."""
     regions = [('menu', 0, MENU_END, None)]
-    left = pin_left(width, app_count)
+    left = PIN_START
     for index in range(app_count):
         regions.append(('app', left, left + PIN_SIZE, index))
         left += PIN_SIZE + PIN_GAP
@@ -365,7 +361,7 @@ def run(root, *, dev='dev', shots=None):
 
     items = applications(load_database(root))
     pinned = items[:pinned_count(len(items), width)]
-    icons_left = pin_left(width, len(pinned))
+    icons_left = PIN_START
     consent = None
     menu_open = False
     clock = ''
@@ -422,7 +418,7 @@ def run(root, *, dev='dev', shots=None):
         label = '>_ DEVOS'
         text(cr_bar, label, PILL_X + (PILL_WIDTH - measure(label, 11.0, True, True)) / 2, 24,
              DESIGN['green'], 11.0, True, mono=True)
-        # Pinned app icons centered: monogram, running dot, active underline.
+        # Pinned app icons after the pill: monogram, running dot, active line.
         tasks = clients()
         running, active = pinned_states(pinned, tasks)
         for index, item in enumerate(pinned):

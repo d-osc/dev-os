@@ -70,12 +70,13 @@ class Layout(unittest.TestCase):
         self.assertEqual(shell.monogram({'label': 'desktop-counter'}), 'D')
         self.assertEqual(shell.monogram({'label': '... '}), '>')
 
-    def test_pinned_icons_are_capped_and_centered(self):
+    def test_pinned_icons_are_capped_and_left_anchored(self):
         self.assertEqual(shell.pinned_count(12, 1024), 9)
         self.assertEqual(shell.pinned_count(3, 1024), 3)
         self.assertEqual(shell.pinned_count(3, 300), 0)
-        left = shell.pin_left(1024, 2)
-        self.assertEqual(left, (1024 - (2 * shell.PIN_SIZE + shell.PIN_GAP)) // 2)
+        regions = dict(((kind, index), (start, end))
+                       for kind, start, end, index in shell.bar_regions(1024, 2))
+        self.assertEqual(regions[('app', 0)][0], shell.PIN_START)
 
     def test_pinned_states_match_windows_by_title(self):
         item = {'label': 'Alpha App', 'name': 'alpha'}
@@ -90,16 +91,16 @@ class Layout(unittest.TestCase):
     def test_bar_hit_regions(self):
         self.assertEqual(shell.bar_hit(1024, 3, 2), ('menu', None))
         self.assertEqual(shell.bar_hit(1024, 100, 2), ('menu', None))
-        first = shell.pin_left(1024, 2)
+        first = shell.PIN_START
         self.assertEqual(shell.bar_hit(1024, first + 5, 2), ('app', 0))
         self.assertEqual(shell.bar_hit(1024, first + shell.PIN_SIZE + shell.PIN_GAP + 5, 2),
                          ('app', 1))
         self.assertEqual(shell.bar_hit(1024, 1020, 2), ('clock', None))
-        self.assertEqual(shell.bar_hit(1024, 200, 0), (None, None))
+        self.assertEqual(shell.bar_hit(1024, 400, 0), (None, None))
 
     def test_bar_hover_follows_the_same_layout(self):
         self.assertEqual(shell.hover_key('bar', 30, 12, width=1024, app_count=0), 'menu')
-        first = shell.pin_left(1024, 2)
+        first = shell.PIN_START
         self.assertEqual(shell.hover_key('bar', first + 5, 10, width=1024, app_count=2),
                          ('app', 0))
         self.assertIsNone(shell.hover_key('bar', 700, 5, width=1024, app_count=2))
