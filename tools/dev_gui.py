@@ -14,12 +14,13 @@ TITLE_HEIGHT = 30
 RADIUS = 10
 BUTTON_RADIUS = 8
 FONT = b'DejaVu Sans'
-PALETTE = {'bg': (0.055, 0.094, 0.161), 'chrome': (0.078, 0.125, 0.204),
-           'chrome_low': (0.043, 0.078, 0.133), 'text': (0.898, 0.929, 0.973),
-           'dim': (0.576, 0.655, 0.769), 'accent': (0.398, 0.878, 0.749),
-           'accent_dark': (0.051, 0.086, 0.149),
-           'bar_low': (0.043, 0.082, 0.149), 'bar_high': (0.094, 0.153, 0.251),
-           'panel': (0.051, 0.086, 0.149)}
+# The shared design language of the shell: flat near-black surfaces, #111827
+# chrome, #222D3D separators, a #00FF9C accent and #F1F5F9 text.
+PALETTE = {'bg': (0.043, 0.059, 0.086), 'chrome': (0.067, 0.094, 0.153),
+           'text': (0.945, 0.961, 0.976), 'dim': (0.435, 0.502, 0.596),
+           'accent': (0.0, 1.0, 0.612), 'accent_dark': (0.043, 0.059, 0.086),
+           'line': (0.133, 0.176, 0.239), 'red': (1.0, 0.267, 0.267),
+           'panel': (0.067, 0.094, 0.153)}
 
 
 # ------------------------------------------------- pure widget/state logic
@@ -354,11 +355,11 @@ class Window:
                 self.visual = info.visual
             else:
                 self.window = api['create'](display, toolkit.root, x, y, width, height, 1,
-                                            0x0e1829, 0x0e1829)
+                                            0x111827, 0x111827)
                 self.visual = toolkit.visual
         else:
             self.window = api['create'](display, toolkit.root, x, y, width, height, 1,
-                                        0x0e1829, 0x0e1829)
+                                        0x0b0f16, 0x0b0f16)
             self.visual = toolkit.visual
         api['store_name'](display, self.window, title.encode('utf-8'))
         delete = c.c_ulong(toolkit.delete)
@@ -407,24 +408,34 @@ class Window:
         cairo.set_rgba(cr, *PALETTE['bg'], 1.0)
         cairo.paint(cr)
         if self.kind == 'toplevel':
-            gradient = cairo.pattern_linear(cr, 0, 0, 0, TITLE_HEIGHT)
-            cairo.pattern_stop(gradient, 0.0, *PALETTE['chrome_low'], 1.0)
-            cairo.pattern_stop(gradient, 1.0, *PALETTE['chrome'], 1.0)
-            cairo.set_source_pattern(cr, gradient)
+            # Flat title plate closed by a separator hairline, the green >_
+            # prompt mark, the title, and a close glyph that reddens on hover.
+            cairo.set_rgba(cr, *PALETTE['chrome'], 1.0)
             cairo.rounded(cr, 0, 0, w, TITLE_HEIGHT + RADIUS, RADIUS)
             cairo.fill(cr)
-            cairo.set_rgba(cr, *PALETTE['accent'], 0.30)
+            cairo.set_rgba(cr, *PALETTE['line'], 1.0)
             cairo.set_line_width(cr, 1)
             cairo.new_sub_path(cr)
             cairo.line_to(cr, 0.5, TITLE_HEIGHT - 0.5)
             cairo.line_to(cr, w - 0.5, TITLE_HEIGHT - 0.5)
             cairo.stroke(cr)
-            tk.text(cr, self.title, 12, TITLE_HEIGHT - 9, PALETTE['text'], 12.0, True)
-            hover = self._close_hover
-            cairo.set_rgba(cr, *PALETTE['accent'], 0.9 if hover else 0.45)
-            cairo.arc(cr, w - 16, TITLE_HEIGHT / 2, 7.5, 0, 6.2832)
+            cairo.set_rgba(cr, *PALETTE['accent'], 1.0)
+            cairo.set_line_width(cr, 1.6)
+            cairo.new_sub_path(cr)
+            cairo.move_to(cr, 12, 11.5)
+            cairo.line_to(cr, 16, 15)
+            cairo.line_to(cr, 12, 18.5)
+            cairo.stroke(cr)
+            cairo.new_sub_path(cr)
+            cairo.move_to(cr, 18, 18.6)
+            cairo.line_to(cr, 21.5, 18.6)
+            cairo.line_to(cr, 21.5, 20.1)
+            cairo.line_to(cr, 18, 20.1)
+            cairo.close_path(cr)
             cairo.fill(cr)
-            cairo.set_rgba(cr, *PALETTE['chrome_low'], 1.0)
+            tk.text(cr, self.title, 28, TITLE_HEIGHT - 9, PALETTE['text'], 12.0, True)
+            close = PALETTE['red'] if self._close_hover else PALETTE['dim']
+            cairo.set_rgba(cr, *close, 1.0)
             cairo.set_line_width(cr, 1.6)
             cairo.new_sub_path(cr)
             cairo.line_to(cr, w - 19.5, TITLE_HEIGHT / 2 - 3.5)
@@ -440,12 +451,12 @@ class Window:
             label.draw(tk, cr)
         for button in self.buttons:
             button.draw(tk, cr)
-        cairo.set_rgba(cr, *PALETTE['accent'], 0.25)
+        cairo.set_rgba(cr, *PALETTE['line'], 1.0)
         cairo.set_line_width(cr, 1)
         cairo.rounded(cr, 0.5, 0.5, w - 1, h - 1, RADIUS)
         cairo.stroke(cr)
         cairo.surface_flush(self.surface)
-        tk.api['flush'](self.tk.display)
+        tk.api['flush'](tk.display)
         self._dirty = False
 
     _close_hover = False

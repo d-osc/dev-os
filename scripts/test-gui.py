@@ -61,8 +61,8 @@ def main():
                       for y in range(height) for x in range(width)})
         assert shades > 300, 'rendering must be anti-aliased, found %d shades' % shades
         checks.append('window renders with anti-aliased detail (%d distinct shades)' % shades)
-        assert count(width, height, raw, mint) > 100, 'close button and Close chip missing'
-        checks.append('title-bar close button and primary Close chip present')
+        assert count(width, height, raw, mint) > 100, 'green >_ mark and Close chip missing'
+        checks.append('title-bar >_ prompt mark and primary Close chip present')
         assert count(width, height, raw, light) > 300, 'value text missing'
         assert count(width, height, raw, dim) > 100, 'heading text missing'
         checks.append('System Info rows (Version/Kernel/Memory/Uptime) rendered')
