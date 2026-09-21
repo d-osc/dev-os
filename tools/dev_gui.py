@@ -18,8 +18,6 @@ import dev_theme  # noqa: E402
 
 TITLE_HEIGHT = 30
 CONTROL_WIDTH = 26
-RADIUS = 10
-BUTTON_RADIUS = 8
 FONT = b'DejaVu Sans'
 # The shared design language of the shell: flat near-black surfaces, #111827
 # chrome, #222D3D separators, a #00FF9C accent and #F1F5F9 text. Everything
@@ -28,6 +26,7 @@ DEFAULT_THEME = dev_theme.resolve({'name': 'Dev OS Dark'})
 PALETTE = dev_theme.gui_palette(DEFAULT_THEME)
 ICONS = dict(DEFAULT_THEME['icons'])
 THEME_COLORS = dict(DEFAULT_THEME['colors'])
+CORNERS = dict(DEFAULT_THEME['corners'])
 
 
 def set_theme(theme):
@@ -35,6 +34,7 @@ def set_theme(theme):
     PALETTE.update(dev_theme.gui_palette(theme))
     ICONS.update(theme['icons'])
     THEME_COLORS.update(theme['colors'])
+    CORNERS.update(theme['corners'])
 
 
 # ------------------------------------------------- pure widget/state logic
@@ -254,6 +254,13 @@ class Cairo:
         import math
         half = math.pi / 2
         self.new_sub_path(cr)
+        if radius <= 0:
+            self.move_to(cr, x, y)
+            self.line_to(cr, x + width, y)
+            self.line_to(cr, x + width, y + height)
+            self.line_to(cr, x, y + height)
+            self.close_path(cr)
+            return
         self.arc(cr, x + width - radius, y + radius, radius, -half, 0)
         self.arc(cr, x + width - radius, y + height - radius, radius, 0, half)
         self.arc(cr, x + radius, y + height - radius, radius, half, 2 * half)
@@ -265,6 +272,13 @@ class Cairo:
         import math
         half = math.pi / 2
         self.new_sub_path(cr)
+        if radius <= 0:
+            self.move_to(cr, x, y)
+            self.line_to(cr, x + width, y)
+            self.line_to(cr, x + width, y + height)
+            self.line_to(cr, x, y + height)
+            self.close_path(cr)
+            return
         self.move_to(cr, x, y + height)
         self.arc(cr, x + radius, y + radius, radius, math.pi, 3 * half)
         self.arc(cr, x + width - radius, y + radius, radius, -half, 0)
@@ -363,22 +377,24 @@ class Button:
 
     def draw(self, tk, cr):
         left, top, width, height = self.rect
+        radius = dev_theme.corner_radius(CORNERS, 'button', width, height)
         if self.primary:
             base = PALETTE['accent']
             fill = {'normal': 0.92, 'hover': 1.0, 'pressed': 0.70}[self.state]
             tk.cairo.set_rgba(cr, *base, fill)
-            tk.cairo.rounded(cr, left, top, width, height, BUTTON_RADIUS)
+            tk.cairo.rounded(cr, left, top, width, height, radius)
             tk.cairo.fill(cr)
             tk.text(cr, self.label, left + width / 2 - tk.text_width(cr, self.label, 10.5, True) / 2,
                     top + height / 2 + 4, PALETTE['accent_dark'], 10.5, True)
         else:
             alpha = {'normal': 0.10, 'hover': 0.22, 'pressed': 0.06}[self.state]
             tk.cairo.set_rgba(cr, 1.0, 1.0, 1.0, alpha)
-            tk.cairo.rounded(cr, left, top, width, height, BUTTON_RADIUS)
+            tk.cairo.rounded(cr, left, top, width, height, radius)
             tk.cairo.fill(cr)
             tk.cairo.set_rgba(cr, 1.0, 1.0, 1.0, 0.16)
             tk.cairo.set_line_width(cr, 1)
-            tk.cairo.rounded(cr, left + 0.5, top + 0.5, width - 1, height - 1, BUTTON_RADIUS)
+            tk.cairo.rounded(cr, left + 0.5, top + 0.5, width - 1, height - 1,
+                             max(0.0, radius - 0.5))
             tk.cairo.stroke(cr)
             tk.text(cr, self.label, left + width / 2 - tk.text_width(cr, self.label, 10.5) / 2,
                     top + height / 2 + 4, PALETTE['text'], 10.5)
@@ -496,7 +512,8 @@ class Window:
             # Flat title plate closed by a separator hairline, the green >_
             # prompt mark, the title, and a close glyph that reddens on hover.
             cairo.set_rgba(cr, *PALETTE['chrome'], 1.0)
-            cairo.rounded_top(cr, 0, 0, w, TITLE_HEIGHT, RADIUS)
+            cairo.rounded_top(cr, 0, 0, w, TITLE_HEIGHT,
+                              dev_theme.corner_radius(CORNERS, 'window', w, TITLE_HEIGHT))
             cairo.fill(cr)
             cairo.set_rgba(cr, *PALETTE['line'], 1.0)
             cairo.set_line_width(cr, 1)
@@ -518,7 +535,8 @@ class Window:
                     color = PALETTE['red'] if name == 'close' else PALETTE['text']
                     tint = PALETTE['red'] if name == 'close' else (1.0, 1.0, 1.0)
                     cairo.set_rgba(cr, *tint, 0.14)
-                    cairo.rounded(cr, cx - 12, 3, 24, 24, 6)
+                    cairo.rounded(cr, cx - 12, 3, 24, 24,
+                                  dev_theme.corner_radius(CORNERS, 'icon', 24, 24))
                     cairo.fill(cr)
                 icon = ICONS['restore'] if name == 'max' and self._stashed is not None \
                     else ICONS[names[name]]
@@ -531,7 +549,8 @@ class Window:
             button.draw(tk, cr)
         cairo.set_rgba(cr, *PALETTE['line'], 1.0)
         cairo.set_line_width(cr, 1)
-        cairo.rounded(cr, 0.5, 0.5, w - 1, h - 1, RADIUS)
+        cairo.rounded(cr, 0.5, 0.5, w - 1, h - 1,
+                      dev_theme.corner_radius(CORNERS, 'window', w, h))
         cairo.stroke(cr)
         cairo.surface_flush(self.surface)
         tk.api['flush'](tk.display)

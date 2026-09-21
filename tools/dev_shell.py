@@ -45,7 +45,6 @@ MENU_WIDTH = 320
 MENU_ITEM_HEIGHT = 36
 MENU_HEADER_HEIGHT = 26
 CONSENT_HEIGHT = 52
-MENU_RADIUS = 12
 ALLOW_X, CANCEL_X = 214, 288
 PALETTE = dev_gui.PALETTE
 # The shell design tokens derive from the same JSON theme as the windows:
@@ -383,12 +382,14 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
         # Start button per the reference SVG: dark rounded rect outlined in
         # green, vector >_ glyph, white DEVOS lettering, then a separator.
         hovered = hover[0] == 'menu'
+        start_r = dev_theme.corner_radius(dev_gui.CORNERS, 'start', PILL_WIDTH, BAR_HEIGHT - 14)
         cairo.set_rgba(cr_bar, *DESIGN['button'], 1.0)
-        cairo.rounded(cr_bar, PILL_X, 7, PILL_WIDTH, BAR_HEIGHT - 14, 6)
+        cairo.rounded(cr_bar, PILL_X, 7, PILL_WIDTH, BAR_HEIGHT - 14, start_r)
         cairo.fill(cr_bar)
         cairo.set_rgba(cr_bar, *DESIGN['green'], 1.0 if hovered else 0.85)
         cairo.set_line_width(cr_bar, 1.5)
-        cairo.rounded(cr_bar, PILL_X + 0.75, 7.75, PILL_WIDTH - 1.5, BAR_HEIGHT - 15.5, 5.25)
+        cairo.rounded(cr_bar, PILL_X + 0.75, 7.75, PILL_WIDTH - 1.5, BAR_HEIGHT - 15.5,
+                      max(0.0, start_r - 0.75))
         cairo.stroke(cr_bar)
         dev_theme.draw_icon(cairo, cr_bar, dev_gui.ICONS['start'], PILL_X, 7,
                             DESIGN['green'], dev_gui.THEME_COLORS, 1.5)
@@ -408,7 +409,9 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
             hovered = hover[0] == ('app', index)
             cairo.set_rgba(cr_bar, 1.0, 1.0, 1.0,
                            0.12 if index == active else 0.08 if hovered else 0.04)
-            cairo.rounded(cr_bar, x + 0.5, y + 0.5, PIN_SIZE - 1, PIN_SIZE - 1, 6)
+            cairo.rounded(cr_bar, x + 0.5, y + 0.5, PIN_SIZE - 1, PIN_SIZE - 1,
+                          dev_theme.corner_radius(dev_gui.CORNERS, 'icon', PIN_SIZE - 1,
+                                                  PIN_SIZE - 1))
             cairo.fill(cr_bar)
             glyph = monogram(item)
             text(cr_bar, glyph, x + PIN_SIZE / 2 - measure(glyph, 13.0, True) / 2, y + 18.5,
@@ -453,11 +456,13 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
     def draw_menu(geometry):
         cr = menu_surface_for(geometry['width'], geometry['height'])
         w, h = geometry['width'], geometry['height']
+        corners = dev_gui.CORNERS
+        menu_r = dev_theme.corner_radius(corners, 'menu', w, h - 2)
         if argb:
             cairo.set_rgba(cr, 0, 0, 0, 0)
             cairo.paint(cr)
             cairo.set_rgba(cr, 0, 0, 0, 0.45)
-            cairo.rounded(cr, 2, 3, w - 4, h, MENU_RADIUS + 2)
+            cairo.rounded(cr, 2, 3, w - 4, h, min(menu_r + 2, h / 2))
             cairo.fill(cr)
         else:
             # Without alpha the desktop behind is simulated so the rounded
@@ -465,11 +470,11 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
             cairo.set_rgba(cr, *DESIGN['bg'], 1.0)
             cairo.paint(cr)
         cairo.set_rgba(cr, *PALETTE['panel'], 0.97)
-        cairo.rounded(cr, 0, 0, w, h - 2, MENU_RADIUS)
+        cairo.rounded(cr, 0, 0, w, h - 2, menu_r)
         cairo.fill(cr)
         cairo.set_rgba(cr, *ACCENT, 0.35)
         cairo.set_line_width(cr, 1)
-        cairo.rounded(cr, 0.5, 0.5, w - 1, h - 3, MENU_RADIUS)
+        cairo.rounded(cr, 0.5, 0.5, w - 1, h - 3, menu_r)
         cairo.stroke(cr)
         cairo.set_rgba(cr, *ACCENT, 1.0)
         cairo.arc(cr, 14, 14, 3, 0, 6.2832)
@@ -486,7 +491,9 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
             hovered = hover[0] == ('item', index)
             if hovered or (consent is not None and item is consent):
                 cairo.set_rgba(cr, *ACCENT, 0.16 if hovered else 0.10)
-                cairo.rounded(cr, 4, top + 2, w - 8, MENU_ITEM_HEIGHT - 4, 8)
+                cairo.rounded(cr, 4, top + 2, w - 8, MENU_ITEM_HEIGHT - 4,
+                              dev_theme.corner_radius(corners, 'row', w - 8,
+                                                      MENU_ITEM_HEIGHT - 4))
                 cairo.fill(cr)
             text(cr, item['label'], 14, top + 17, PALETTE['text'], 12.5, True)
             detail = ' · '.join(item['categories'][:2] +
@@ -496,7 +503,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
             top += MENU_ITEM_HEIGHT
         if consent:
             cairo.set_rgba(cr, *ACCENT, 0.08)
-            cairo.rounded(cr, 4, top + 2, w - 8, CONSENT_HEIGHT - 6, 8)
+            cairo.rounded(cr, 4, top + 2, w - 8, CONSENT_HEIGHT - 6,
+                          dev_theme.corner_radius(corners, 'row', w - 8, CONSENT_HEIGHT - 6))
             cairo.fill(cr)
             text(cr, 'Open ' + truncate(consent['label'], lambda s: measure(s, 12.0, True), 170)
                  + '?', 14, top + 19, PALETTE['text'], 12.0, True)
@@ -504,7 +512,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
                  or 'no permissions', 14, top + 37, PALETTE['dim'], 10.0)
             fill = 1.0 if hover[0] == 'allow' else 0.9
             cairo.set_rgba(cr, *ACCENT, fill)
-            cairo.rounded(cr, ALLOW_X, top + 12, 64, 22, 11)
+            cairo.rounded(cr, ALLOW_X, top + 12, 64, 22,
+                          dev_theme.corner_radius(corners, 'chip', 64, 22))
             cairo.fill(cr)
             text(cr, 'ALLOW', ALLOW_X + 14, top + 28, PALETTE['accent_dark'], 10.5, True)
             text(cr, 'cancel', CANCEL_X, top + 28,

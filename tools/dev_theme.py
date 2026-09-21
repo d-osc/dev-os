@@ -13,6 +13,7 @@ from pathlib import Path
 
 LIMIT = 65536
 COLOR_TOKENS = ('bg', 'chrome', 'line', 'text', 'dim', 'accent', 'accentText', 'blue', 'red')
+CORNER_TOKENS = ('window', 'button', 'menu', 'row', 'chip', 'start', 'icon')
 ICON_NAMES = ('start', 'mark', 'wifi', 'volume', 'bell',
               'minimize', 'maximize', 'restore', 'close')
 ICON_KINDS = ('line', 'poly', 'rect', 'circle', 'arc')
@@ -22,6 +23,11 @@ ICON_KINDS = ('line', 'poly', 'rect', 'circle', 'arc')
 DEFAULT_COLORS = {'bg': '#0b0f16', 'chrome': '#111827', 'line': '#222D3D',
                   'text': '#F1F5F9', 'dim': '#6F8098', 'accent': '#00FF9C',
                   'accentText': '#0b0f16', 'blue': '#00AAFF', 'red': '#FF4444'}
+
+# Corner radii in pixels; 0 draws square corners. Defaults preserve the
+# classic look, so a theme only names the tokens it wants to change.
+DEFAULT_CORNERS = {'window': 10, 'button': 8, 'menu': 12, 'row': 8,
+                   'chip': 11, 'start': 6, 'icon': 6}
 
 # Icons live in their own view boxes and are drawn one-to-one; each element
 # inherits the caller's color unless it names a token.
@@ -168,12 +174,21 @@ def validate(raw):
     """Check a parsed theme object; partial overlays are fine."""
     if not isinstance(raw, dict):
         raise ValueError('Theme must be a JSON object')
-    unknown = set(raw) - {'name', 'colors', 'icons'}
+    unknown = set(raw) - {'name', 'colors', 'icons', 'corners'}
     if unknown:
         raise ValueError('Unknown theme section: ' + ', '.join(sorted(unknown)))
     name = raw.get('name', '')
     if not isinstance(name, str) or len(name) > 64:
         raise ValueError('Invalid theme name')
+    corners = raw.get('corners', {})
+    if not isinstance(corners, dict):
+        raise ValueError('Theme corners must be an object')
+    unknown = set(corners) - set(CORNER_TOKENS)
+    if unknown:
+        raise ValueError('Unknown theme corner: ' + ', '.join(sorted(unknown)))
+    for token, value in corners.items():
+        if not _number(value) or not 0 <= value <= 24:
+            raise ValueError('Theme corner %s must be 0..24 pixels' % token)
     colors = raw.get('colors', {})
     if not isinstance(colors, dict):
         raise ValueError('Theme colors must be an object')
@@ -198,9 +213,11 @@ def resolve(raw, base_colors=None, base_icons=None):
     colors.update(raw.get('colors', {}))
     icons = dict(DEFAULT_ICONS if base_icons is None else base_icons)
     icons.update(raw.get('icons', {}))
+    corners = dict(DEFAULT_CORNERS)
+    corners.update({token: float(value) for token, value in raw.get('corners', {}).items()})
     return {'name': raw.get('name') or 'Untitled',
             'colors': {token: parse_color(value) for token, value in colors.items()},
-            'icons': icons}
+            'icons': icons, 'corners': corners}
 
 
 def load(path):
@@ -211,6 +228,11 @@ def load(path):
 
 
 # ------------------------------------------------------------------ palettes
+
+def corner_radius(corners, token, width, height):
+    """A themed corner radius clamped to half the box's smaller side."""
+    return max(0.0, min(corners[token], width / 2, height / 2))
+
 
 def gui_palette(theme):
     """Map a theme onto the dev_gui PALETTE token names."""

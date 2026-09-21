@@ -31,6 +31,9 @@ DEVOS_THEME=themes/terminal-amber.json dev-shell   # หรือผ่านต
     "text": "#F5EFE3",      "dim": "#8A7D64",     "accent": "#FFB000",
     "accentText": "#201600", "blue": "#59C2FF",    "red": "#FF6363"
   },
+  "corners": {
+    "window": 4, "menu": 6, "chip": 3
+  },
   "icons": { "wifi": { "...": "ดูด้านล่าง" } }
 }
 ```
@@ -51,7 +54,29 @@ DEVOS_THEME=themes/terminal-amber.json dev-shell   # หรือผ่านต
 | `blue` | เส้นใต้แอป active บน taskbar | `#00AAFF` |
 | `red` | จุดแจ้งเตือน, ปุ่มปิดเวลา hover | `#FF4444` |
 
-รูปแบบสี: `#RGB` หรือ `#RRGGBB` เท่านั้น — token นอกตารางถูกปฏิเสตั้งแต่โหลด
+รูปแบบสี: `#RGB` หรือ `#RRGGBB` เท่านั้น — token นอกตารางถูกปฏิเสธตั้งแต่โหลด
+
+### มุม (corners)
+
+ปรับรัศมีมุมเป็นพิกเซล ย่าน 0–24 — **`0` คือมุมเหลี่ยม (square) เต็ม** ค่าจะถูก
+บีบไม่ให้เกินครึ่งด้านสั้นของกล่องโดยอัตโนมัติ:
+
+| Token | ควบคุม | ค่าเริ่มต้น |
+|---|---|---|
+| `window` | มุมหน้าต่างแอป + title plate | `10` |
+| `button` | ปุ่มในหน้าต่าง (ปุ่มหลัก/รอง) | `8` |
+| `menu` | แผงเมนูแอป (รวมเงา) | `12` |
+| `row` | แถวรายการในเมนู + แถวยินยอม | `8` |
+| `chip` | ชิป ALLOW | `11` |
+| `start` | ปุ่ม start | `6` |
+| `icon` | ไอคอนแอปบน taskbar + พื้น hover ปุ่มควบคุม | `6` |
+
+ตัวอย่างธีมมุมเหลี่ยมทั้งหมด:
+
+```json
+{ "name": "Brutalist", "corners": { "window": 0, "button": 0, "menu": 0,
+                                    "row": 0, "chip": 0, "start": 0, "icon": 0 } }
+```
 
 ### ไอคอน
 

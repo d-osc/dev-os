@@ -79,6 +79,26 @@ class Resolving(unittest.TestCase):
                 theme.load(big)
 
 
+class Corners(unittest.TestCase):
+    def test_partial_corners_merge_and_validate(self):
+        resolved = theme.resolve({'corners': {'window': 0, 'start': 3.5}})
+        self.assertEqual(resolved['corners']['window'], 0.0)
+        self.assertEqual(resolved['corners']['start'], 3.5)
+        self.assertEqual(resolved['corners']['menu'], 12.0)
+        for raw in ({'corners': {'nope': 1}}, {'corners': {'window': -1}},
+                    {'corners': {'window': 25}}, {'corners': []},
+                    {'corners': {'window': True}}):
+            with self.assertRaises(ValueError):
+                theme.resolve(raw)
+
+    def test_corner_radius_clamps_to_half_the_box(self):
+        corners = theme.resolve({})['corners']
+        self.assertEqual(theme.corner_radius(corners, 'chip', 64, 22), 11.0)
+        self.assertEqual(theme.corner_radius(corners, 'chip', 20, 22), 10.0)
+        self.assertEqual(theme.corner_radius(corners, 'window', 40, 12), 6.0)
+        self.assertEqual(theme.corner_radius({'window': 0}, 'window', 40, 40), 0.0)
+
+
 class Palettes(unittest.TestCase):
     def test_one_theme_reaches_both_toolkits(self):
         resolved = theme.resolve({'colors': {'accent': '#FFB000', 'chrome': '#1C1914'}})

@@ -12,7 +12,18 @@ import zlib
 
 PROJECT = Path(__file__).resolve().parents[1]
 AMBER = {'name': 'Theme Test Amber', 'colors': {'accent': '#FFB000',
-                                                'accentText': '#201600'}}
+                                                'accentText': '#201600'},
+         'corners': {token: 0 for token in
+                     ('window', 'button', 'menu', 'row', 'chip', 'start', 'icon')}}
+
+
+def pixel(raw, width, x, y):
+    stride = width * 3 + 1
+    return tuple(raw[y * stride + 1 + x * 3:y * stride + 1 + x * 3 + 3])
+
+
+def near(actual, color, slack=6):
+    return all(abs(a - b) <= slack for a, b in zip(actual, color))
 
 
 def png_pixels(path):
@@ -61,8 +72,11 @@ def main():
         assert start > 30, 'amber start button missing (%d px)' % start
         assert count(bar_w, bar_h, bar_raw, green, 0, 0, 140) == 0, 'old accent still visible'
         assert count(bar_w, bar_h, bar_raw, amber, bar_w - 180) > 8, 'amber wifi glyph missing'
+        corner_px = pixel(bar_raw, bar_w, 8, 7)
+        assert not near(corner_px, (11, 15, 22)), \
+            'start button corner is still rounded (shows background): %s' % (corner_px,)
         checks.append('taskbar restyled: start button and tray accent are amber, '
-                      'no green remains (%dx%d)' % (bar_w, bar_h))
+                      'no green remains, corners square (%dx%d)' % (bar_w, bar_h))
 
         environment = dict(os.environ, DEVOS_DATA_DIR=str(home), DEVOS_THEME=str(theme_file))
         script = PROJECT / 'examples/desktop-info/payload/opt/apps/desktop-info/window.py'
@@ -73,8 +87,11 @@ def main():
         win_w, win_h, win_raw = png_pixels(home / 'window.png')
         assert count(win_w, win_h, win_raw, amber) > 100, 'amber Close chip / >_ mark missing'
         assert count(win_w, win_h, win_raw, green) == 0, 'old accent still visible in the window'
+        win_corner = pixel(win_raw, win_w, 1, 1)
+        assert not near(win_corner, (11, 15, 22)), \
+            'window corner is still rounded (shows background): %s' % (win_corner,)
         checks.append('window app inherits the theme via DEVOS_THEME: primary button and '
-                      'title mark are amber')
+                      'title mark are amber, window corners square')
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.parent.joinpath('amber-bar.png').write_bytes(
             Path(str(prefix) + '-bar.png').read_bytes())

@@ -11,6 +11,11 @@
     "blue": "#59C2FF",
     "red": "#FF6363"
   },
+  "corners": {
+    "window": 4,
+    "menu": 6,
+    "chip": 3
+  },
   "icons": {
     "wifi": {
       "view": [16, 16],

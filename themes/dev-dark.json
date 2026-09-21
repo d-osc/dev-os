@@ -10,5 +10,14 @@
     "accentText": "#0b0f16",
     "blue": "#00AAFF",
     "red": "#FF4444"
+  },
+  "corners": {
+    "window": 10,
+    "button": 8,
+    "menu": 12,
+    "row": 8,
+    "chip": 11,
+    "start": 6,
+    "icon": 6
   }
 }
