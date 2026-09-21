@@ -3,6 +3,7 @@ set -eu
 project=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 target=${1:?Target root is required}
 install -D -m 0755 "$project/tools/dev.py" "$target/usr/bin/dev"
+install -D -m 0755 "$project/tools/dev_shell.py" "$target/usr/bin/dev-shell"
 install -D -m 0755 "$project/rootfs-overlay/etc/init.d/S35dev-recover" "$target/etc/init.d/S35dev-recover"
 install -D -m 0644 "$project/tools/dev_runtime.py" "$target/usr/lib/devos/dev_runtime.py"
 install -D -m 0644 "$project/tools/dev_repository.py" "$target/usr/lib/devos/dev_repository.py"
