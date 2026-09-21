@@ -8,6 +8,15 @@ sys.path.insert(0, '/usr/lib/devos')
 base = Path(os.environ.get('DEVOS_APP_DIR') or Path(__file__).resolve().parents[6])
 sys.path.append(str(base / 'tools'))
 import dev_gui  # noqa: E402
+import dev_theme  # noqa: E402
+
+
+def active_theme(argv):
+    """--theme <file> > $DEVOS_THEME > the built-in default."""
+    if '--theme' in argv:
+        return dev_theme.load(argv[argv.index('--theme') + 1])
+    source = os.environ.get('DEVOS_THEME')
+    return dev_theme.load(source) if source else dev_gui.DEFAULT_THEME
 
 
 def parse_meminfo(text):
@@ -51,6 +60,11 @@ def collect(platform=None, meminfo=None, release=None, uptime=None):
 
 
 def main():
+    try:
+        theme = active_theme(sys.argv)
+    except (OSError, ValueError, IndexError) as error:
+        raise SystemExit('Could not load theme: %s' % error)
+    dev_gui.set_theme(theme)
     rows = collect()
     toolkit = dev_gui.Toolkit()
     window = dev_gui.Window(toolkit, 380, 230, title='Dev OS — System Info', x=140, y=120)

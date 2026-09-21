@@ -1,0 +1,14 @@
+{
+  "name": "Dev OS Dark",
+  "colors": {
+    "bg": "#0b0f16",
+    "chrome": "#111827",
+    "line": "#222D3D",
+    "text": "#F1F5F9",
+    "dim": "#6F8098",
+    "accent": "#00FF9C",
+    "accentText": "#0b0f16",
+    "blue": "#00AAFF",
+    "red": "#FF4444"
+  }
+}

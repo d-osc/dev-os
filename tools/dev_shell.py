@@ -19,6 +19,7 @@ it automatically yet.
 import argparse
 import ctypes as c
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -27,6 +28,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.append('/usr/lib/devos')
 import dev_gui  # noqa: E402
+import dev_theme  # noqa: E402
 
 BAR_HEIGHT = 40
 PILL_X, PILL_WIDTH = 8, 100
@@ -46,14 +48,19 @@ CONSENT_HEIGHT = 52
 MENU_RADIUS = 12
 ALLOW_X, CANCEL_X = 214, 288
 PALETTE = dev_gui.PALETTE
-# The reference design palette: flat near-black base, a green start accent,
-# a blue active-app underline and a red notification badge.
-DESIGN = {'bg': (0.043, 0.059, 0.086), 'line': (0.102, 0.125, 0.189),
-          'button': (0.067, 0.094, 0.153), 'sep': (0.133, 0.176, 0.239),
-          'green': (0.0, 1.0, 0.612), 'blue': (0.0, 0.667, 1.0),
-          'white': (0.945, 0.961, 0.976), 'gray': (0.435, 0.502, 0.596),
-          'red': (1.0, 0.267, 0.267)}
+# The shell design tokens derive from the same JSON theme as the windows:
+# an accent start button, a blue active-app underline, a red badge.
+DESIGN = dev_theme.shell_design(dev_gui.DEFAULT_THEME)
 ACCENT = DESIGN['green']
+THEME_SOURCE = [None]
+
+
+def apply_theme(theme):
+    """Restyle the shell and every window app from one resolved theme."""
+    global ACCENT
+    dev_gui.set_theme(theme)
+    DESIGN.update(dev_theme.shell_design(theme))
+    ACCENT = DESIGN['green']
 
 
 # ---------------------------------------------------------------- pure logic
@@ -202,77 +209,6 @@ def load_database(root):
     return database
 
 
-# ------------------------------------------------------------- tray glyphs
-
-def draw_prompt(cairo, cr, x, y, width, height):
-    """The `>_` terminal glyph of the start button, scaled from the SVG."""
-    cairo.set_rgba(cr, *DESIGN['green'], 1.0)
-    cairo.set_line_width(cr, height * 0.085)
-    left, tip = x + width * 0.10, x + width * 0.174
-    mid, top, bottom = y + height * 0.513, y + height * 0.338, y + height * 0.688
-    cairo.new_sub_path(cr)
-    cairo.move_to(cr, left, top)
-    cairo.line_to(cr, tip, mid)
-    cairo.line_to(cr, left, bottom)
-    cairo.stroke(cr)
-    bar_x, bar_y = x + width * 0.195, y + height * 0.734
-    bar_w, bar_h = width * 0.078, height * 0.088
-    cairo.new_sub_path(cr)
-    cairo.move_to(cr, bar_x, bar_y)
-    cairo.line_to(cr, bar_x + bar_w, bar_y)
-    cairo.line_to(cr, bar_x + bar_w, bar_y + bar_h)
-    cairo.line_to(cr, bar_x, bar_y + bar_h)
-    cairo.close_path(cr)
-    cairo.fill(cr)
-
-
-def draw_wifi(cairo, cr, cx, cy):
-    cairo.set_rgba(cr, *DESIGN['green'], 1.0)
-    cairo.set_line_width(cr, 1.4)
-    cairo.new_sub_path(cr)
-    cairo.arc(cr, cx, cy + 3, 3.2, -2.36, -0.79)
-    cairo.stroke(cr)
-    cairo.new_sub_path(cr)
-    cairo.arc(cr, cx, cy + 3, 6.4, -2.45, -0.69)
-    cairo.stroke(cr)
-    cairo.arc(cr, cx, cy + 3, 1.2, 0, 6.2832)
-    cairo.fill(cr)
-
-
-def draw_volume(cairo, cr, cx, cy):
-    cairo.set_rgba(cr, *DESIGN['gray'], 1.0)
-    cairo.new_sub_path(cr)
-    cairo.move_to(cr, cx - 6, cy - 2)
-    cairo.line_to(cr, cx - 3, cy - 2)
-    cairo.line_to(cr, cx + 0.5, cy - 5.5)
-    cairo.line_to(cr, cx + 0.5, cy + 5.5)
-    cairo.line_to(cr, cx - 3, cy + 2)
-    cairo.line_to(cr, cx - 6, cy + 2)
-    cairo.close_path(cr)
-    cairo.fill(cr)
-    cairo.set_line_width(cr, 1.4)
-    cairo.new_sub_path(cr)
-    cairo.arc(cr, cx + 1.5, cy, 4.5, -0.85, 0.85)
-    cairo.stroke(cr)
-
-
-def draw_bell(cairo, cr, cx, cy):
-    cairo.set_rgba(cr, *DESIGN['gray'], 1.0)
-    cairo.new_sub_path(cr)
-    cairo.arc(cr, cx, cy - 0.5, 3.8, 3.1416, 6.2832)
-    cairo.line_to(cr, cx + 4.2, cy + 2.5)
-    cairo.line_to(cr, cx - 4.2, cy + 2.5)
-    cairo.close_path(cr)
-    cairo.fill(cr)
-    cairo.set_line_width(cr, 1.4)
-    cairo.new_sub_path(cr)
-    cairo.arc(cr, cx, cy + 2.5, 2.0, 0, 3.1416)
-    cairo.stroke(cr)
-    cairo.set_rgba(cr, *DESIGN['red'], 1.0)
-    cairo.arc(cr, cx + 4.5, cy - 4.5, 2.6, 0, 6.2832)
-    cairo.fill(cr)
-
-
 # ------------------------------------------------------------------- X11 side
 
 def screenshot(x, api, display, window, path, width, height):
@@ -302,7 +238,22 @@ def property_windows(x, api, display, root, name):
         x.XFree(data.value)
 
 
-def run(root, *, dev='dev', shots=None):
+def theme_from(path):
+    """--theme flag > DEVOS_THEME > the installed theme > built-in default."""
+    source = path or os.environ.get('DEVOS_THEME')
+    if source:
+        return dev_theme.load(source), source
+    installed = Path('/usr/share/devos/themes/dev-dark.json')
+    if installed.is_file():
+        return dev_theme.load(installed), str(installed)
+    return dev_gui.DEFAULT_THEME, None
+
+
+def run(root, *, dev='dev', shots=None, theme=None, theme_source=None):
+    if theme is None:
+        theme, theme_source = dev_gui.DEFAULT_THEME, None
+    apply_theme(theme)
+    THEME_SOURCE[0] = theme_source
     x, api = dev_gui.connect()
     cairo = dev_gui.Cairo()
     display = api['open_display'](None)
@@ -439,7 +390,8 @@ def run(root, *, dev='dev', shots=None):
         cairo.set_line_width(cr_bar, 1.5)
         cairo.rounded(cr_bar, PILL_X + 0.75, 7.75, PILL_WIDTH - 1.5, BAR_HEIGHT - 15.5, 5.25)
         cairo.stroke(cr_bar)
-        draw_prompt(cairo, cr_bar, PILL_X, 7, PILL_WIDTH, BAR_HEIGHT - 14)
+        dev_theme.draw_icon(cairo, cr_bar, dev_gui.ICONS['start'], PILL_X, 7,
+                            DESIGN['green'], dev_gui.THEME_COLORS, 1.5)
         text(cr_bar, 'DEVOS', PILL_X + PILL_WIDTH * 0.355, 25.9, DESIGN['white'], 16.0, True)
         separator_x = MENU_END + SEPARATOR_OFF + 0.5
         cairo.set_rgba(cr_bar, *DESIGN['sep'], 1.0)
@@ -486,9 +438,14 @@ def run(root, *, dev='dev', shots=None):
         cairo.line_to(cr_bar, separator, 10)
         cairo.line_to(cr_bar, separator, BAR_HEIGHT - 10)
         cairo.stroke(cr_bar)
-        draw_wifi(cairo, cr_bar, separator - 24, 20)
-        draw_volume(cairo, cr_bar, separator - 44, 20)
-        draw_bell(cairo, cr_bar, separator - 64, 20)
+        draw_icon = dev_theme.draw_icon
+        colors = dev_gui.THEME_COLORS
+        draw_icon(cairo, cr_bar, dev_gui.ICONS['wifi'], separator - 32, 12,
+                  DESIGN['green'], colors, 1.4)
+        draw_icon(cairo, cr_bar, dev_gui.ICONS['volume'], separator - 52, 12,
+                  DESIGN['gray'], colors, 1.4)
+        draw_icon(cairo, cr_bar, dev_gui.ICONS['bell'], separator - 72, 12,
+                  DESIGN['gray'], colors, 1.4)
         cairo.surface_flush(bar_surface)
         api['flush'](display)
         return tasks
@@ -605,7 +562,12 @@ def run(root, *, dev='dev', shots=None):
                     choice = consent_choice(position.x, position.y, len(items),
                                             consent is not None)
                     if choice == 'allow':
-                        subprocess.Popen(launch_command(dev, root, consent), start_new_session=True,
+                        environment = dict(os.environ)
+                        if THEME_SOURCE[0]:
+                            # Launched apps inherit the active theme file.
+                            environment['DEVOS_THEME'] = THEME_SOURCE[0]
+                        subprocess.Popen(launch_command(dev, root, consent),
+                                         start_new_session=True, env=environment,
                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         open_menu(False)
                     elif choice == 'cancel':
@@ -642,6 +604,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', default='/', help='target root (default: /)')
     parser.add_argument('--dev', default='dev', help='dev command used for launches')
+    parser.add_argument('--theme', type=Path,
+                        help='JSON theme file (default: $DEVOS_THEME or the installed theme)')
     parser.add_argument('--screenshot-prefix', type=Path,
                         help='capture bar and menu PNGs once, then exit')
     args = parser.parse_args()
@@ -649,7 +613,12 @@ def main():
     if args.screenshot_prefix:
         args.screenshot_prefix.parent.mkdir(parents=True, exist_ok=True)
         shots = (str(args.screenshot_prefix) + '-bar.png', str(args.screenshot_prefix) + '-menu.png')
-    result = run(args.root, dev=args.dev, shots=shots)
+    try:
+        theme, theme_source = theme_from(args.theme)
+    except (OSError, ValueError) as error:
+        raise SystemExit('Could not load theme: %s' % error)
+    result = run(args.root, dev=args.dev, shots=shots,
+                 theme=theme, theme_source=theme_source)
     print(json.dumps(result))
     if shots:
         print('Screenshots: ' + ' '.join(shots))

@@ -6,6 +6,10 @@ taskbar สูง 40 พิกเซลด้านล่างจอตาม�
 hairline และความโปร่งใสจริงบน visual 32-bit ARGB เมื่อ display รองรับ ต้องมี `libcairo`,
 `fontconfig` และฟอนต์ TTF (เช่น DejaVu Sans) ใน image
 
+สีและไอคอนทั้งระบบ (shell + หน้าต่างแอป) สลับได้ด้วยไฟล์ JSON แบบ VS Code —
+ดูรูปแบบไฟล์และ token ทั้งหมดที่ [THEMES.md](THEMES.md) (`dev-shell --theme
+themes/terminal-amber.json`)
+
 ## Toolkit กลาง dev_gui
 
 `tools/dev_gui.py` (ติดตั้งที่ `/usr/lib/devos/dev_gui.py`) คือ widget toolkit ขนาดเล็กที่

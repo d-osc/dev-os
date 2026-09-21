@@ -1,0 +1,26 @@
+{
+  "name": "Terminal Amber",
+  "colors": {
+    "bg": "#12100C",
+    "chrome": "#1C1914",
+    "line": "#3A3226",
+    "text": "#F5EFE3",
+    "dim": "#8A7D64",
+    "accent": "#FFB000",
+    "accentText": "#201600",
+    "blue": "#59C2FF",
+    "red": "#FF6363"
+  },
+  "icons": {
+    "wifi": {
+      "view": [16, 16],
+      "elements": [
+        {"kind": "line", "x1": 3, "y1": 6, "x2": 8, "y2": 11, "width": 1.8},
+        {"kind": "line", "x1": 13, "y1": 6, "x2": 8, "y2": 11, "width": 1.8},
+        {"kind": "line", "x1": 5.5, "y1": 3.5, "x2": 8, "y2": 6.5, "width": 1.4},
+        {"kind": "line", "x1": 10.5, "y1": 3.5, "x2": 8, "y2": 6.5, "width": 1.4},
+        {"kind": "circle", "cx": 8, "cy": 12.5, "r": 1.1, "fill": true}
+      ]
+    }
+  }
+}

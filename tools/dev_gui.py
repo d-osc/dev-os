@@ -9,7 +9,12 @@ itself. Pure-logic parts (hit testing, control zones and button state)
 stay importable everywhere for unit tests.
 """
 import ctypes as c
+from pathlib import Path
+import sys
 import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dev_theme  # noqa: E402
 
 TITLE_HEIGHT = 30
 CONTROL_WIDTH = 26
@@ -17,12 +22,19 @@ RADIUS = 10
 BUTTON_RADIUS = 8
 FONT = b'DejaVu Sans'
 # The shared design language of the shell: flat near-black surfaces, #111827
-# chrome, #222D3D separators, a #00FF9C accent and #F1F5F9 text.
-PALETTE = {'bg': (0.043, 0.059, 0.086), 'chrome': (0.067, 0.094, 0.153),
-           'text': (0.945, 0.961, 0.976), 'dim': (0.435, 0.502, 0.596),
-           'accent': (0.0, 1.0, 0.612), 'accent_dark': (0.043, 0.059, 0.086),
-           'line': (0.133, 0.176, 0.239), 'red': (1.0, 0.267, 0.267),
-           'panel': (0.067, 0.094, 0.153)}
+# chrome, #222D3D separators, a #00FF9C accent and #F1F5F9 text. Everything
+# below is a plain default; set_theme() restyles it from a JSON theme file.
+DEFAULT_THEME = dev_theme.resolve({'name': 'Dev OS Dark'})
+PALETTE = dev_theme.gui_palette(DEFAULT_THEME)
+ICONS = dict(DEFAULT_THEME['icons'])
+THEME_COLORS = dict(DEFAULT_THEME['colors'])
+
+
+def set_theme(theme):
+    """Apply a resolved dev_theme theme to every window drawn afterwards."""
+    PALETTE.update(dev_theme.gui_palette(theme))
+    ICONS.update(theme['icons'])
+    THEME_COLORS.update(theme['colors'])
 
 
 # ------------------------------------------------- pure widget/state logic
@@ -492,24 +504,13 @@ class Window:
             cairo.line_to(cr, 0.5, TITLE_HEIGHT - 0.5)
             cairo.line_to(cr, w - 0.5, TITLE_HEIGHT - 0.5)
             cairo.stroke(cr)
-            cairo.set_rgba(cr, *PALETTE['accent'], 1.0)
-            cairo.set_line_width(cr, 1.6)
-            cairo.new_sub_path(cr)
-            cairo.move_to(cr, 12, 11.5)
-            cairo.line_to(cr, 16, 15)
-            cairo.line_to(cr, 12, 18.5)
-            cairo.stroke(cr)
-            cairo.new_sub_path(cr)
-            cairo.move_to(cr, 18, 18.6)
-            cairo.line_to(cr, 21.5, 18.6)
-            cairo.line_to(cr, 21.5, 20.1)
-            cairo.line_to(cr, 18, 20.1)
-            cairo.close_path(cr)
-            cairo.fill(cr)
+            dev_theme.draw_icon(cairo, cr, ICONS['mark'], 0, 0, PALETTE['accent'],
+                                 THEME_COLORS, 1.5)
             title = ellipsize(self.title, lambda s: tk.text_width(cr, s, 12.0, True), w - 120)
             tk.text(cr, title, 28, TITLE_HEIGHT - 9, PALETTE['text'], 12.0, True)
             # Window controls at the right: - (minimize), square (maximize or
             # restore), x (close). Gray at rest, lit on hover; close reddens.
+            names = {'min': 'minimize', 'max': 'maximize', 'close': 'close'}
             for name, cx in (('min', w - 67), ('max', w - 41), ('close', w - 15)):
                 hovered = self._control_hover == name
                 color = PALETTE['dim']
@@ -519,37 +520,9 @@ class Window:
                     cairo.set_rgba(cr, *tint, 0.14)
                     cairo.rounded(cr, cx - 12, 3, 24, 24, 6)
                     cairo.fill(cr)
-                cairo.set_rgba(cr, *color, 1.0)
-                if name == 'min':
-                    cairo.set_line_width(cr, 2.0)
-                    cairo.new_sub_path(cr)
-                    cairo.line_to(cr, cx - 5, 18.5)
-                    cairo.line_to(cr, cx + 5, 18.5)
-                    cairo.stroke(cr)
-                elif name == 'max':
-                    cairo.set_line_width(cr, 1.8)
-                    if self._stashed is None:
-                        cairo.rounded(cr, cx - 4.5, 10.5, 9, 9, 1.5)
-                        cairo.stroke(cr)
-                    else:  # restore state: two overlapping plates
-                        cairo.rounded(cr, cx - 2, 9, 8, 8, 1.5)
-                        cairo.stroke(cr)
-                        cairo.set_rgba(cr, *PALETTE['chrome'], 1.0)
-                        cairo.rounded(cr, cx - 6, 13, 8, 8, 1.5)
-                        cairo.fill(cr)
-                        cairo.set_rgba(cr, *color, 1.0)
-                        cairo.rounded(cr, cx - 6, 13, 8, 8, 1.5)
-                        cairo.stroke(cr)
-                else:
-                    cairo.set_line_width(cr, 2.0)
-                    cairo.new_sub_path(cr)
-                    cairo.line_to(cr, cx - 3.5, TITLE_HEIGHT / 2 - 3.5)
-                    cairo.line_to(cr, cx + 3.5, TITLE_HEIGHT / 2 + 3.5)
-                    cairo.stroke(cr)
-                    cairo.new_sub_path(cr)
-                    cairo.line_to(cr, cx + 3.5, TITLE_HEIGHT / 2 - 3.5)
-                    cairo.line_to(cr, cx - 3.5, TITLE_HEIGHT / 2 + 3.5)
-                    cairo.stroke(cr)
+                icon = ICONS['restore'] if name == 'max' and self._stashed is not None \
+                    else ICONS[names[name]]
+                dev_theme.draw_icon(cairo, cr, icon, cx - 13, 0, color, THEME_COLORS, 1.5)
         if self.draw_callback:
             self.draw_callback(self)
         for label in self.labels:
