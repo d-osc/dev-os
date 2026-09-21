@@ -1,0 +1,22 @@
+{
+  "manifest_version": 2,
+  "name": "desktop-info",
+  "display_name": "System Info",
+  "version": "0.1.0",
+  "arch": "all",
+  "permissions": ["window"],
+  "window": {
+    "type": "desktop",
+    "runtime": "python",
+    "entry_point": "opt/apps/desktop-info/window.py"
+  },
+  "launcher": {
+    "name": "System Info",
+    "comment": "Show Dev OS version, kernel and memory",
+    "icon": "opt/apps/desktop-info/icon.svg",
+    "categories": ["System"]
+  },
+  "executables": [
+    "opt/apps/desktop-info/window.py"
+  ]
+}

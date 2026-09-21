@@ -5,6 +5,19 @@ taskbar สูง 24 พิกเซลด้านล่างจอ เรน�
 แบบ anti-alias (ผ่าน fontconfig), ไล่เฉดสี, มุมโค้งและความโปร่งใสจริงบน visual 32-bit ARGB
 เมื่อ display รองรับ ต้องมี `libcairo`, `fontconfig` และฟอนต์ TTF (เช่น DejaVu Sans) ใน image
 
+## Toolkit กลาง dev_gui
+
+`tools/dev_gui.py` (ติดตั้งที่ `/usr/lib/devos/dev_gui.py`) คือ widget toolkit ขนาดเล็กที่
+shell และแอป DPK ใช้ร่วมกัน: การเชื่อมต่อ X11+Cairo, `Window` แบบมี title bar (ลากย้ายได้
+ปุ่มปิด มุมโค้ง), popup โปร่งใส, `Button` พร้อม hover/press และ callback, `Label`,
+การจับภาพหน้าต่างสำหรับทดสอบ และตัวช่วยเขียน PNG — ไม่เพิ่ม dependency นอกเหนือจาก
+libX11, libcairo และ fontconfig ที่ shell ต้องใช้อยู่แล้ว
+
+แอปตัวอย่างที่ใช้ toolkit นี้: `examples/desktop-info` (System Info) — หน้าต่าง 380×230
+แสดง Version/Kernel/Memory/Uptime พร้อมปุ่ม Close แบบหลัก แพ็กเป็น `.dpk` รูปแบบ 2 ได้
+ปกติ และเปิดผ่าน `dev launch desktop-info --allow window` ใน sandbox เดียวกับแอปอื่น
+ตรวจผ่าน `python3 scripts/test-gui.py` บน display จริง ภาพหลักฐานอยู่ที่ `out/gui-tests/`
+
 ## ดีไซน์
 
 Taskbar (สูง 24px เต็มความกว้างจอ):

@@ -4,6 +4,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
+import sys
+sys.path.insert(0, str(Path(__file__).parents[1] / 'tools'))
+import dev_gui
 spec = importlib.util.spec_from_file_location('dev_shell', Path(__file__).parents[1] / 'tools/dev_shell.py')
 shell = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shell)
@@ -93,7 +96,7 @@ class Layout(unittest.TestCase):
         import zlib
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'x.png'
-            shell.write_png(path, 2, 1, [bytearray((255, 0, 0, 0, 255, 0))])
+            dev_gui.write_png(path, 2, 1, [bytearray((255, 0, 0, 0, 255, 0))])
             data = path.read_bytes()
         self.assertTrue(data.startswith(b'\x89PNG\r\n\x1a\n'))
         self.assertIn(b'IDAT', data)

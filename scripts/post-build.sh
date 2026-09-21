@@ -16,6 +16,7 @@ install -D -m 0644 "$project/tools/dev_slots.py" "$target/usr/lib/devos/dev_slot
 install -D -m 0644 "$project/tools/dev_config.py" "$target/usr/lib/devos/dev_config.py"
 install -D -m 0644 "$project/tools/dev_preserve.py" "$target/usr/lib/devos/dev_preserve.py"
 install -D -m 0644 "$project/tools/dev_deploy.py" "$target/usr/lib/devos/dev_deploy.py"
+install -D -m 0644 "$project/tools/dev_gui.py" "$target/usr/lib/devos/dev_gui.py"
 install -D -m 0755 "$project/tools/dev_notifications.py" "$target/usr/lib/devos/dev_notifications.py"
 install -D -m 0755 "$project/installer/devos-install.py" "$target/usr/sbin/devos-install"
 install -D -m 0755 "$project/tools/memory-probe.py" "$target/usr/lib/devos/memory-probe.py"
