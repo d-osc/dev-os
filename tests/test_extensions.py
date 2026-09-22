@@ -357,5 +357,29 @@ class Lifecycle(unittest.TestCase):
             self.assertNotEqual(run('disable').returncode, 0)
 
 
+class ZoneLayout(unittest.TestCase):
+    def test_widths_fit_as_declared_when_there_is_room(self):
+        self.assertEqual(extensions.zone_layout(400, [80, 120]), [80, 120])
+        self.assertEqual(extensions.zone_layout(400, []), [])
+
+    def test_overflow_shrinks_proportionally_then_drops(self):
+        fitted = extensions.zone_layout(200, [80, 80])
+        self.assertEqual(len(fitted), 2)
+        visible = [width for width in fitted if width is not None]
+        used = sum(visible) + extensions.ZONE_GAP * (len(visible) - 1)
+        self.assertLessEqual(used, 200 - extensions.ZONE_PAD)
+        self.assertGreaterEqual(min(visible), extensions.ZONE_MINIMUM)
+        dropped = extensions.zone_layout(120, [80, 80, 80])
+        self.assertIn(None, dropped)
+        visible = [width for width in dropped if width is not None]
+        self.assertLessEqual(sum(visible)
+                             + extensions.ZONE_GAP * (len(visible) - 1),
+                             120 - extensions.ZONE_PAD)
+
+    def test_tiny_zone_drops_everything(self):
+        self.assertEqual(extensions.zone_layout(50, [80]), [None])
+        self.assertEqual(extensions.zone_layout(50, [80, 80]), [None, None])
+
+
 if __name__ == '__main__':
     unittest.main()

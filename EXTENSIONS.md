@@ -69,6 +69,15 @@ def activate(api):
 |---|---|
 | `register_widget(zone, width, draw, on_click=None)` | แถบของตัวเองบน taskbar — `zone` เป็น `'left'` (ถัดไอคอนแอป) หรือ `'right'` (ก่อนถาด) กว้าง 8–320px คลิกได้ |
 | `create_panel(id, width, height, draw, on_event=None, x=8)` | แผงลอยเหนือ taskbar ที่ extension วาดเองทั้งหมด (webview ของเรา) — คืน handle ที่มี `show()/hide()/toggle()`; `on_event('click'/'hover', x, y)` รับเหตุการณ์เมาส์; คลิกนอกแผงปิดอัตโนมัติ |
+
+**หลักประกันว่า widget ไม่ทับกัน** (แม้หลาย extension เปิดพร้อมกัน):
+
+- การวาดถูก **clip อยู่ในกรอบที่ประกาศเสมอ** — วาดเกินความกว้างที่ลงทะเบียนไว้
+  ส่วนเกินจะไม่แสดง ไม่ทับ widget ข้าง ๆ (JS: registerWidget(id, zone, width, ops, onClick) — สังเกตว่า id มาก่อน zone)
+- ถ้า widget หลายตัวรวมกันแล้วพื้นที่ในโซนไม่พอ ทุกตัวในโซนนั้นจะถูก
+  **ย่อสัดส่วนให้พอดี** (extension เห็นขนาดจริงผ่าน `painter.width` จึงวาด
+  ปรับตัวได้) และตัวที่เหลือไม่พอแม้ย่อ (ต่ำกว่า 24px) จะถูกซ่อนพร้อม
+  **สัญลักษณ์ `!` สีแดง** ที่ขอบโซน และ warning ไปที่ stderr ของ shell
 | `override_clock(width, draw)` | ทับการวาดนาฬิกาในตัวทั้งหมด (กว้าง 40–400px) |
 | `hide(section)` / `show(section)` | ซ่อน/คืนส่วน built-in: `'tray'` (ไอคอน wifi/ลำโพง/กระดิ่ง), `'clock'`, `'pinned'` — ผสมกับ widget เพื่อประกอบ taskbar แบบของตัวเองได้ |
 | `register_command(id, title, handler, detail='')` | คำสั่งในเมนูแอป |

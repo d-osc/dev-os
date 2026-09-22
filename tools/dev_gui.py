@@ -255,6 +255,11 @@ class Cairo:
         self.pattern_stop = bind('cairo_pattern_add_color_stop_rgba', None, c.c_void_p,
                                  c.c_double, c.c_double, c.c_double, c.c_double, c.c_double)
         self.set_source_pattern = bind('cairo_set_source', None, c.c_void_p, c.c_void_p)
+        self.save = bind('cairo_save', None, c.c_void_p)
+        self.restore = bind('cairo_restore', None, c.c_void_p)
+        self.rectangle = bind('cairo_rectangle', None, c.c_void_p, c.c_double,
+                              c.c_double, c.c_double, c.c_double)
+        self.clip = bind('cairo_clip', None, c.c_void_p)
 
     def rounded(self, cr, x, y, width, height, radius):
         import math

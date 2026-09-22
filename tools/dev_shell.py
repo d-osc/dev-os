@@ -400,13 +400,21 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     tray_right = [None]
     widget_zones = [[]]
     widget_end = [0]
+    warned = set()
     panel_state = {}
 
     def hidden(section):
         return bool(host and section in host.hidden)
 
     def paint_extension(draw, x, y, w, h, tag):
-        """Run one extension draw callback with a Painter; never fatal."""
+        """Run one extension draw callback inside its clipped box; never fatal.
+
+        The clip is what keeps neighbouring widgets apart: an extension may
+        declare 80 pixels but draw at x=200 — nothing lands outside its box.
+        """
+        cairo.save(cr_bar)
+        cairo.rectangle(cr_bar, x, y, w, h)
+        cairo.clip(cr_bar)
         painter = dev_extensions.Painter(cairo, cr_bar, x, y, w, h,
                                          dev_gui.THEME_COLORS, extents)
         try:
@@ -416,6 +424,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             cairo.set_rgba(cr_bar, 1.0, 0.27, 0.27, 0.35)
             cairo.rounded(cr_bar, x, y, w, h, 4)
             cairo.fill(cr_bar)
+        finally:
+            cairo.restore(cr_bar)
 
     def clients():
         found = []
@@ -550,27 +560,53 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             widget_end[0] = PIN_START + len(pinned) * (PIN_SIZE + PIN_GAP)
         widget_zones[0] = []
         if host:
+            def warn_dropped(widget):
+                key = widget['ext'] + ':' + widget['id']
+                if key not in warned:
+                    warned.add(key)
+                    print('extension widget %s does not fit and is hidden' % key,
+                          file=sys.stderr)
+
+            def overflow_marker(x):
+                cairo.set_rgba(cr_bar, *DESIGN['red'], 0.9)
+                cairo.rounded(cr_bar, x, 7, 14, BAR_HEIGHT - 14, 4)
+                cairo.fill(cr_bar)
+                text(cr_bar, '!', x + 5, 25, DESIGN['white'], 11.5, True)
+
             base = separator - TRAY_LEFT - TRAY_PITCH * len(host.tray)
-            for index, widget in enumerate(host.widgets):
-                if widget['zone'] != 'right':
+            right = [(index, widget) for index, widget in enumerate(host.widgets)
+                     if widget['zone'] == 'right']
+            plan = dev_extensions.zone_layout(base - widget_end[0],
+                                              [widget['width'] for _, widget in right])
+            dropped = 0
+            for (index, widget), fitted in zip(right, plan):
+                if fitted is None:
+                    dropped += 1
+                    warn_dropped(widget)
                     continue
-                base -= widget['width']
-                if base < widget_end[0] + 24:
-                    break
-                paint_extension(widget['draw'], base, 0, widget['width'], BAR_HEIGHT,
+                base -= fitted
+                paint_extension(widget['draw'], base, 0, fitted, BAR_HEIGHT,
                                 widget['ext'] + ':' + widget['id'])
-                widget_zones[0].append((base, base + widget['width'], index))
-                base -= 12
-            cursor = widget_end[0]
-            for index, widget in enumerate(host.widgets):
-                if widget['zone'] != 'left':
+                widget_zones[0].append((base, base + fitted, index))
+                base -= dev_extensions.ZONE_GAP
+            if dropped:
+                overflow_marker(base - 18)
+            left = [(index, widget) for index, widget in enumerate(host.widgets)
+                    if widget['zone'] == 'left']
+            plan = dev_extensions.zone_layout(base - widget_end[0],
+                                              [widget['width'] for _, widget in left])
+            cursor, dropped = widget_end[0], 0
+            for (index, widget), fitted in zip(left, plan):
+                if fitted is None:
+                    dropped += 1
+                    warn_dropped(widget)
                     continue
-                if cursor + widget['width'] > base - 40:
-                    break
-                paint_extension(widget['draw'], cursor, 0, widget['width'], BAR_HEIGHT,
+                paint_extension(widget['draw'], cursor, 0, fitted, BAR_HEIGHT,
                                 widget['ext'] + ':' + widget['id'])
-                widget_zones[0].append((cursor, cursor + widget['width'], index))
-                cursor += widget['width'] + 12
+                widget_zones[0].append((cursor, cursor + fitted, index))
+                cursor += fitted + dev_extensions.ZONE_GAP
+            if dropped:
+                overflow_marker(cursor + 4)
         cairo.surface_flush(bar_surface)
         api['flush'](display)
         return tasks
@@ -685,6 +721,10 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 api['unmap'](display, state['window'])
                 handle.slot['visible'] = False
             if handle.slot['visible'] and state:
+                cairo.save(state['cr'])
+                cairo.rectangle(state['cr'], 0, 0, handle.spec['width'],
+                                handle.spec['height'])
+                cairo.clip(state['cr'])
                 painter = dev_extensions.Painter(cairo, state['cr'], 0, 0,
                                                  handle.spec['width'],
                                                  handle.spec['height'],
@@ -694,6 +734,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 except Exception as error:
                     print('extension %s panel failed to draw: %s'
                           % (handle.spec['id'], error), file=sys.stderr)
+                finally:
+                    cairo.restore(state['cr'])
                 cairo.surface_flush(state['surface'])
         api['flush'](display)
 

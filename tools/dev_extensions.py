@@ -685,3 +685,38 @@ def manage(args, root='/'):
         print('%s is now %s' % (args.target, 'disabled' if args.action == 'disable'
                                 else 'enabled'))
     return 0
+
+
+# ----------------------------------------------------------- widget layout
+
+ZONE_GAP = 12          # pixels between two widgets in a zone
+ZONE_MINIMUM = 24      # a widget narrower than this is dropped instead
+ZONE_PAD = 40          # breathing room kept between the two zones
+
+
+def zone_layout(available, widths, gap=ZONE_GAP, minimum=ZONE_MINIMUM, pad=ZONE_PAD):
+    """Fit declared widget widths into one taskbar zone without overlap.
+
+    Everything fits as declared when there is room; otherwise the widths
+    shrink proportionally (extensions see the real box via painter.width),
+    and anything that still cannot fit becomes None — the shell then hides
+    it and shows the red overflow marker instead.
+    """
+    widths = list(widths)
+    if not widths:
+        return []
+    budget = available - pad
+    if budget < minimum:
+        return [None] * len(widths)
+    total = sum(widths)
+    if total + gap * (len(widths) - 1) <= budget:
+        return widths
+    scale = (budget - gap * (len(widths) - 1)) / total
+    fitted = [max(minimum, int(round(width * scale))) for width in widths]
+    used = sum(fitted) + gap * (len(fitted) - 1)
+    index = len(fitted) - 1
+    while used > budget and index >= 0:
+        used -= fitted[index] + (gap if index > 0 else 0)
+        fitted[index] = None
+        index -= 1
+    return fitted
