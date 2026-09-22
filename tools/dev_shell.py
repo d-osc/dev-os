@@ -334,6 +334,15 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     delete = api['atom'](display, b'WM_DELETE_WINDOW', 1)
     api['set_protocols'](display, bar, c.byref(c.c_ulong(delete)), 1)
 
+    root_surface = root_cr = None
+    if settings.get('desktop.background', 'none') != 'none':
+        import dev_background
+        root_surface = cairo.surface_create(display, root_window, default_visual,
+                                            width, height)
+        root_cr = cairo.create(root_surface)
+        dev_background.render(cairo, root_cr, width, height,
+                              settings['desktop.background'], DESIGN['bg'])
+
     bar_surface = cairo.surface_create(display, bar, default_visual, width, BAR_HEIGHT)
     cr_bar = cairo.create(bar_surface)
     menu_surface = [None]

@@ -19,7 +19,8 @@
   "clock.hour12": false,
   "clock.showSeconds": true,
   "clock.dateFormat": "%b %d, %Y",
-  "font.family": "DejaVu Sans"
+  "font.family": "DejaVu Sans",
+  "desktop.background": "/usr/share/backgrounds/dev.jpg"
 }
 ```
 
@@ -30,9 +31,29 @@
 | `clock.showSeconds` | `true` | `false` = แสดงแค่ ชั่วโมง:นาที |
 | `clock.dateFormat` | `%b %d, %Y` | รูปแบบบรรทัดวันที่ (strftime, แสดงตัวพิมพ์ใหญ่) |
 | `font.family` | `DejaVu Sans` | ฟอนต์ของ shell และแอป (ต้องเป็นฟอนต์ที่ fontconfig เห็น) |
+| `desktop.background` | `none` | พื้นหลัง desktop + หน้า login: `none` (สีธีม), `#RRGGBB`, หรือพาธไฟล์ `.png` `.jpg/.jpeg` `.svg` `.html` |
 
 ลำดับการเลือกธีมเมื่อรัน: ธง `--theme` > ตัวแปร `DEVOS_THEME` >
 คีย์ `theme` ใน settings > built-in
+
+## พื้นหลัง desktop (desktop.background)
+
+ใช้ได้ทั้งบนหน้าจอ desktop (shell วาดบน root window) และหน้า login (วาดใต่
+การ์ดและ greeter extension hooks) ทุกแบบวาดแบบ **cover** (เต็มจอ คงสัดส่วน
+ตัดขอบเกิน):
+
+- **`.png`** — ถอดรหัสด้วย cairo โดยตรง
+- **`.jpg` / `.jpeg`** — ถอดรหัสผ่าน TurboJPEG (libturbojpeg มาพร้อม image)
+- **`.svg`** — parser ชุดย่อยของเราเอง: `rect` `circle` `ellipse` `line`
+  `polyline` `polygon` `path` (แกน M/L/H/V + ข้ามช่วงโค้งอย่างปลอดภัย), สี
+  hex/ชื่อพื้นฐาน, `fill`/`stroke`/`stroke-width`, `viewBox` และ `<g>`
+- **`.html`** — ชุดย่อยเชิงประกาศ: `background-color` /
+  `background:linear-gradient(c1,c2)` บน body/div, ข้อความ
+  (`<h1..h3>/<p>` + style `left/top/font-size/font-weight/color`) และ
+  `<img src="...png">` แบบพาธสัมพัทธ์
+
+ไฟล์ทุกชนิดจำกัด 256 KiB (รูป ≤16 MiB) ตรวจอย่างเคร่งครัด — **พังเมื่อไหร่
+fallback เป็นสีธีมทันที** พื้นหลังไม่มีสิทธิทำให้ desktop ล้ม
 
 ## การสืบทอดไปยังแอป
 

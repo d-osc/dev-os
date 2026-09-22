@@ -271,6 +271,17 @@ class Cairo:
         self.rectangle = bind('cairo_rectangle', None, c.c_void_p, c.c_double,
                               c.c_double, c.c_double, c.c_double)
         self.clip = bind('cairo_clip', None, c.c_void_p)
+        self.scale = bind('cairo_scale', None, c.c_void_p, c.c_double, c.c_double)
+        self.surface_from_png = bind('cairo_image_surface_create_from_png',
+                                     c.c_void_p, c.c_char_p)
+        self.surface_from_data = bind('cairo_image_surface_create_for_data',
+                                      c.c_void_p, c.c_void_p, c.c_int, c.c_int,
+                                      c.c_int, c.c_int)
+        self.image_width = bind('cairo_image_surface_get_width', c.c_int, c.c_void_p)
+        self.image_height = bind('cairo_image_surface_get_height', c.c_int, c.c_void_p)
+        self.set_source_surface = bind('cairo_set_source_surface', None, c.c_void_p,
+                                       c.c_void_p, c.c_double, c.c_double)
+        self.surface_destroy = bind('cairo_surface_destroy', None, c.c_void_p)
 
     def rounded(self, cr, x, y, width, height, radius):
         import math

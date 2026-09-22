@@ -19,7 +19,8 @@ THEME_DIRS = (Path('themes'), Path('/usr/share/devos/themes'))
 MODES = ('desktop', 'server')
 
 DEFAULTS = {'theme': 'dev-dark', 'clock.hour12': False, 'clock.showSeconds': True,
-            'clock.dateFormat': '%b %d, %Y', 'font.family': 'DejaVu Sans'}
+            'clock.dateFormat': '%b %d, %Y', 'font.family': 'DejaVu Sans',
+            'desktop.background': 'none'}
 BOOLEANS = ('clock.hour12', 'clock.showSeconds')
 
 
@@ -35,7 +36,8 @@ def validate(raw):
     unknown = set(raw) - set(DEFAULTS)
     if unknown:
         raise ValueError('Unknown setting: ' + ', '.join(sorted(unknown)))
-    limits = {'theme': 128, 'clock.dateFormat': 48, 'font.family': 64}
+    limits = {'theme': 128, 'clock.dateFormat': 48, 'font.family': 64,
+              'desktop.background': 128}
     for key, value in raw.items():
         if key in BOOLEANS:
             if not isinstance(value, bool):
@@ -59,9 +61,10 @@ def load(path):
 
 
 def active(extra=None):
-    """Merged settings: system file, then user file, then the override."""
+    """Merged settings: system file, then user file, then the override
+    (the --settings flag or $DEVOS_SETTINGS)."""
     overlay = {}
-    for path in (SYSTEM, USER, extra):
+    for path in (SYSTEM, USER, extra or os.environ.get('DEVOS_SETTINGS')):
         if path is not None and Path(path).is_file():
             overlay.update(load_raw(path))
     settings = dict(DEFAULTS)
