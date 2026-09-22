@@ -1,0 +1,8 @@
+{
+  "id": "devos.hello-js",
+  "name": "Hello JS",
+  "version": "1.0.0",
+  "description": "JavaScript extension: clock widget, tray icon and command",
+  "engine": 1,
+  "main": "extension.js"
+}

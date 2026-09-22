@@ -50,11 +50,21 @@ if [ "${DEVOS_WITH_NODE:-0}" = 1 ]; then
     # Node requires a C++ toolchain. Use a fresh build tree when enabling it.
     printf '\nBR2_TOOLCHAIN_BUILDROOT_CXX=y\nBR2_PACKAGE_NODEJS=y\n' >> "$out/.config"
 fi
+if [ "${DEVOS_WITH_RUST:-0}" = 1 ]; then
+    # rustc + cargo on the target; a long build, hence opt-in like Node.
+    printf '\nBR2_PACKAGE_RUST=y\n' >> "$out/.config"
+fi
 make -C "$br" O="$out" olddefconfig
 if [ "${DEVOS_WITH_NODE:-0}" = 1 ]; then
     grep -qx 'BR2_TOOLCHAIN_BUILDROOT_CXX=y' "$out/.config" &&
     grep -qx 'BR2_PACKAGE_NODEJS=y' "$out/.config" || {
         echo 'Requested Node runtime was not selected by Buildroot' >&2
+        exit 1
+    }
+fi
+if [ "${DEVOS_WITH_RUST:-0}" = 1 ]; then
+    grep -qx 'BR2_PACKAGE_RUST=y' "$out/.config" || {
+        echo 'Requested Rust toolchain was not selected by Buildroot' >&2
         exit 1
     }
 fi

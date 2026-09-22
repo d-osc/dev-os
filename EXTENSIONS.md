@@ -67,13 +67,43 @@ taskbar + แผงลอยรายละเอียด กด widget เพ�
 `register_command`, `register_tray`, `notify`, `set_theme`, `settings/theme/screen`
 — ดูตัวอย่าง `examples/extensions/battery` และ `examples/extensions/theme-switch`
 
-## เรื่อง JS/TS (สำคัญ)
+## Python กับ JavaScript (Node.js)
 
-Desktop ปัจจุบันไม่มี JavaScript engine ใน image (ไม่มี Node/QuickJS) API จึง
-ให้เขียนด้วย **Python** ซึ่ง runtime มีอยู่แล้ว — แต่ manifest (`engine`) และ
-API surface ออกแบบให้ language-agnostic: เมื่อ Buildroot เพิ่ม engine
-(เช่น QuickJS) ใน image รุ่นหน้า host สำหรับ JS จะโหลด manifest เดียวกันนี้ได้
-ทันทีโดยไม่ต้องเปลี่ยนรูปแบบ
+manifest เลือกภาษาด้วย `"main"`: `"extension.py"` หรือ `"extension.js"` —
+extension ภาษา JS รันบน **Node.js runtime** ผ่าน runner (`ext-runner.js`) คุยกับ
+shell ด้วย JSON บรรทัดต่อบรรทัด คำสั่ง/ไอคอนถาด/notif/ธีมใช้เหมือน Python เป๊ะ
+ต่างกันแค่การวาด: callback ข้าม process ไม่ได้ JS จึงส่ง **draw ops** (ลิสต์
+`{op:'text'|'rect'|'line'|'circle'|'icon', ...}`) แล้ว shell เป็นคน replay ผ่าน
+Painter — จะอัปเดตภาพเมื่อไหร่ก็ `api.updateWidget(id, ops)` /
+`api.updatePanel(id, ops)` ตัวอย่าง: `examples/extensions/hello-js`
+
+```js
+module.exports.activate = function activate(api) {
+  api.registerWidget('clock', 'left', 76, [
+    { op: 'rect', x: 0, y: 3, w: 72, h: 34, color: 'chrome', r: 4 },
+    { op: 'text', value: '12:34', x: 8, y: 25, color: 'accent', size: 13, bold: true },
+  ]);
+  api.registerCommand('devos.hello-js.ping', 'Ping from JavaScript',
+                      () => api.notify('Hello from JS', 'Node ' + process.version));
+};
+```
+
+API ฝั่ง JS: `registerCommand`, `registerTray`, `registerWidget(id, zone, width,
+ops, onClick?)`, `updateWidget`, `createPanel(id, w, h, ops, onEvent?, x?)` (คืน
+handle `show/hide/toggle`), `updatePanel`, `overrideClock(width, ops)` /
+`restoreClock()`, `hide`/`show`, `notify`, `setTheme`, และ `settings/theme/screen`
+— **TypeScript ใช้ได้** เพราะเป้าหมายคือ CommonJS ธรรมดา คอมไพล์ด้วย `tsc` แล้วส่ง
+`extension.js` ที่ได้มาได้เลย
+
+Node ต้องมีใน image: สร้างด้วย `DEVOS_WITH_NODE=1 sh scripts/configure.sh …`
+(สำหรับ dev บนเครื่องปกติ แค่มี `node` ใน PATH ก็พอ)
+
+## Rust
+
+`DEVOS_WITH_RUST=1` ตอน configure เพิ่ม rustc + cargo ลงใน image — เป็นเครื่องมือ
+สำหรับคอมไพล์โปรแกรม/แอป native บนเครื่อง Dev OS เอง extension แบบ Rust
+(binary คุย JSON ตามโปรโตคอลเดียวกับ ext-runner.js) เป็นแนวทางอนาคตเมื่อมี
+ตัวอย่างใช้งานจริง
 
 ## ความปลอดภัย (โมเดลความเชื่อใจ)
 
@@ -86,8 +116,8 @@ host — การติดตั้ง extension คือความยิน
 ## การตรวจสอบ
 
 `tests/test_extensions.py` ครอบ manifest validation, วงจร activate/deactivate,
-การรันคำสั่ง, Painter, widget/panel/override validation และกรณี extension พัง
-(263 unit tests ผ่านทั้ง Windows/Linux) สองสคริปต์พิสูจน์บน display จริง:
-`scripts/test-extensions.py` (โหลด + คำสั่ง + ไอคอนถาด) และ
-`scripts/test-gui-extensions.py` (custom widget + clock override + hide + แผงลอย
-ตรวจด้วยพิกเซล)
+การรันคำสั่ง, Painter, widget/panel/override validation, draw-ops และ
+โปรโตคอล JS ทั้งฝั่ง dispatch (267 unit tests ผ่านทั้ง Windows/Linux) สามสคริปต์
+พิสูจน์บน display จริง: `scripts/test-extensions.py` (โหลด + คำสั่ง + ถาด),
+`scripts/test-gui-extensions.py` (widget + clock override + hide + แผงลอย) และ
+`scripts/test-js-extensions.py` (extension ภาษา JavaScript รันบน Node จริง)

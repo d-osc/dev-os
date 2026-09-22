@@ -162,5 +162,81 @@ class PainterAndWidgets(unittest.TestCase):
             host.set_hidden('everything', True)
 
 
+class JsProtocol(unittest.TestCase):
+    class Recorder:
+        def __init__(self):
+            self.calls = []
+
+        def __getattr__(self, name):
+            def call(*arguments, **keywords):
+                self.calls.append((name, arguments, keywords))
+            return call
+
+    def test_manifest_accepts_a_javascript_main(self):
+        self.assertEqual(extensions.validate(dict(GOOD_MANIFEST, main='extension.js'))
+                         ['main'], 'extension.js')
+        with self.assertRaises(ValueError):
+            extensions.validate(dict(GOOD_MANIFEST, main='extension.rs'))
+
+    def test_ops_validation(self):
+        extensions.validate_ops([{'op': 'text', 'value': 'hi', 'x': 1, 'y': 2}])
+        for bad in ('nope', [[]], [{'op': 'hexagon'}],
+                    [{'op': 'rect', 'x': 0, 'y': 0, 'w': 99**9, 'h': 1}],
+                    [{'op': 'rect', 'color': 'mauve'}],
+                    [{'op': 'text', 'value': 'x' * 81}],
+                    [{'op': 'text', 'value': 5}],
+                    [{'op': 'icon', 'icon': 7}]):
+            with self.assertRaises(ValueError):
+                extensions.validate_ops(bad)
+
+    def test_messages_register_update_and_dispatch(self):
+        notes = []
+        themes = []
+        host = extensions.Host({'settings': lambda: {}, 'theme': lambda: {'name': 'x'},
+                                'screen': lambda: [800, 600],
+                                'notify': lambda *a: notes.append(a),
+                                'set_theme': themes.append})
+        session = extensions.JsSession('devos.js', host, 'runner.js', '.')
+        session.handle_line('{"type":"command","id":"c1","title":"Run","detail":"d"}')
+        self.assertEqual(host.commands[0]['id'], 'c1')
+        session.handle_line('{"type":"widget","id":"w1","zone":"left","width":80,'
+                            '"ops":[{"op":"rect","x":0,"y":0,"w":80,"h":40,'
+                            '"color":"blue"}],"click":true}')
+        self.assertEqual(host.widgets[0]['width'], 80)
+        first = self.Recorder()
+        host.widgets[0]['draw'](first)
+        self.assertTrue(any(name == 'rect' for name, *_ in first.calls))
+        session.handle_line('{"type":"update","target":"widget","id":"w1",'
+                            '"ops":[{"op":"text","value":"hi","x":1,"y":2}]}')
+        second = self.Recorder()
+        host.widgets[0]['draw'](second)
+        self.assertTrue(any(name == 'text' for name, *_ in second.calls))
+        session.handle_line('{"type":"panel","id":"p1","width":200,"height":80,"x":8,'
+                            '"ops":[]}')
+        session.handle_line('{"type":"panel_cmd","id":"p1","cmd":"show"}')
+        self.assertEqual(host.panels[0].slot['request'], 'show')
+        session.handle_line('{"type":"clock_override","width":120,'
+                            '"ops":[{"op":"text","value":"OVR","x":4,"y":24}]}')
+        self.assertEqual(host.clock_override['width'], 120)
+        session.handle_line('{"type":"clock_restore"}')
+        self.assertIsNone(host.clock_override)
+        session.handle_line('{"type":"hide","section":"tray"}')
+        self.assertIn('tray', host.hidden)
+        session.handle_line('{"type":"notify","title":"T","body":"B"}')
+        self.assertEqual(notes, [('T', 'B')])
+        session.handle_line('{"type":"set_theme","path":"/tmp/x.json"}')
+        self.assertEqual(themes, ['/tmp/x.json'])
+        session.handle_line('{"type":"ready"}')
+        with self.assertRaises(ValueError):
+            session.handle_line('{"type":"surprise"}')
+
+    def test_bad_ops_in_a_message_are_rejected(self):
+        host = extensions.Host(provides())
+        session = extensions.JsSession('devos.js', host, 'runner.js', '.')
+        with self.assertRaises(ValueError):
+            session.handle_line('{"type":"widget","id":"w2","zone":"left","width":80,'
+                                '"ops":[{"op":"hexagon"}]}')
+
+
 if __name__ == '__main__':
     unittest.main()

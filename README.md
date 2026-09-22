@@ -74,6 +74,11 @@ sh scripts/configure.sh ~/src/buildroot-2026.08
 make -C out/buildroot menuconfig
 ```
 
+ธงตัวเลือกตอน configure (ใช้ tree ใหม่ทุกครั้งที่เปลี่ยน): `DEVOS_WITH_NODE=1`
+เพิ่ม **Node.js runtime** (extension ภาษา JS และเครื่องมือ Node บนเครื่อง),
+`DEVOS_WITH_RUST=1` เพิ่ม **rustc + cargo** — ทั้งคู่เป็น build ยาวจึงเป็น opt-in
+และ configure จะตรวจว่า Buildroot เลือกแพ็กเกจจริงก่อนปล่อยผ่าน
+
 ก่อน build ให้ตั้งค่าบัญชีที่ **System configuration**:
 
 1. เปิด root login และตั้ง root password ของคุณเองสำหรับทดสอบผ่าน console

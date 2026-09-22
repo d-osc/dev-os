@@ -12,9 +12,13 @@ and capped; a broken extension is reported and skipped, never fatal.
 """
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import sys
+import threading
 import traceback
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -23,6 +27,8 @@ MANIFEST_LIMIT = 4096
 CODE_LIMIT = 64 * 1024
 TRAY_LIMIT = 4
 WIDGET_LIMIT = 8
+OP_LIMIT = 64
+OP_KINDS = ('text', 'rect', 'line', 'circle', 'icon')
 ZONES = ('left', 'right')
 HIDEABLE = ('tray', 'clock', 'pinned')
 ID = re.compile(r'[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)*')
@@ -49,8 +55,8 @@ def validate(manifest):
         raise ValueError('Invalid extension version (use MAJOR.MINOR.PATCH)')
     if type(manifest['engine']) is not int or manifest['engine'] != 1:
         raise ValueError('Unsupported extension engine')
-    if manifest['main'] != 'extension.py':
-        raise ValueError("Extension main must be 'extension.py'")
+    if manifest['main'] not in ('extension.py', 'extension.js'):
+        raise ValueError("Extension main must be 'extension.py' or 'extension.js'")
     description = manifest.get('description', '')
     if not isinstance(description, str) or len(description) > 160:
         raise ValueError('Invalid extension description')
@@ -213,6 +219,7 @@ class Host:
         self.hidden = set()         # stock sections switched off by extensions
         self.clock_override = None  # {'ext','width','draw'}
         self.modules = []           # loaded modules, newest first
+        self.js = []                # JsSession processes
         self.loaded = []            # ids of extensions that activated cleanly
         self.report = []            # {'id','error'} for broken extensions
 
@@ -243,6 +250,13 @@ class Host:
         size = code.stat().st_size
         if size > CODE_LIMIT:
             raise ValueError('Extension code exceeds %d bytes' % CODE_LIMIT)
+        if manifest['main'] == 'extension.js':
+            session = JsSession(manifest['id'], self,
+                                Path(__file__).resolve().parent / 'ext-runner.js', path)
+            session.start()
+            self.js.append(session)
+            self.loaded.append(manifest['id'])
+            return
         module_name = 'devos_ext_' + manifest['id'].replace('.', '_')
         spec = importlib.util.spec_from_file_location(module_name, code)
         module = importlib.util.module_from_spec(spec)
@@ -353,5 +367,187 @@ class Host:
                     traceback.print_exc()
         for handle in self.panels:
             handle.slot['request'] = 'hide'
+        for session in self.js:
+            session.stop()
         self.commands, self.tray, self.widgets, self.panels, self.modules = [], [], [], [], []
-        self.clock_override, self.hidden = None, set()
+        self.clock_override, self.hidden, self.js = None, set(), []
+
+
+# ------------------------------------------------- JavaScript extensions
+
+def _op_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) \
+        and abs(value) <= 4096
+
+
+def validate_ops(ops):
+    """Check a declarative draw list (JSON-safe, what JS extensions send)."""
+    if not isinstance(ops, list) or len(ops) > OP_LIMIT:
+        raise ValueError('Draw ops must be a list of at most %d items' % OP_LIMIT)
+    for op in ops:
+        if not isinstance(op, dict) or op.get('op') not in OP_KINDS:
+            raise ValueError('Unknown draw op')
+        color = op.get('color')
+        if color is not None and color not in COLORS:
+            raise ValueError('Unknown draw op color: %s' % color)
+        for key, value in op.items():
+            if key in ('x', 'y', 'w', 'h', 'r', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy',
+                       'size', 'width', 'alpha') and not _op_number(value):
+                raise ValueError('Draw op has a bad %s' % key)
+        if op['op'] == 'text' and not isinstance(op.get('value', ''), str):
+            raise ValueError('Text op needs a string value')
+        if len(op.get('value', '')) > 80:
+            raise ValueError('Text op value is too long')
+        if op['op'] == 'icon' and not isinstance(op.get('icon'), (str, dict)):
+            raise ValueError('Icon op needs an icon name or object')
+    return ops
+
+
+def play_ops(painter, ops):
+    """Replay a validated draw list onto a Painter."""
+    for op in ops:
+        kind = op['op']
+        if kind == 'text':
+            painter.text(op.get('value', ''), op.get('x', 0), op.get('y', 0),
+                         op.get('color', 'text'), float(op.get('size', 12.0)),
+                         bool(op.get('bold', False)), float(op.get('alpha', 1.0)))
+        elif kind == 'rect':
+            painter.rect(op.get('x', 0), op.get('y', 0), op.get('w', 0), op.get('h', 0),
+                         op.get('color', 'chrome'), radius=op.get('r', 0),
+                         fill=bool(op.get('fill', True)), alpha=float(op.get('alpha', 1.0)))
+        elif kind == 'line':
+            painter.line(op.get('x1', 0), op.get('y1', 0), op.get('x2', 0),
+                         op.get('y2', 0), op.get('color', 'text'),
+                         width=op.get('width', 1.5), alpha=float(op.get('alpha', 1.0)))
+        elif kind == 'circle':
+            painter.circle(op.get('cx', 0), op.get('cy', 0), op.get('r', 1),
+                           op.get('color', 'accent'), fill=bool(op.get('fill', True)),
+                           alpha=float(op.get('alpha', 1.0)))
+        else:  # icon
+            painter.icon(op.get('icon'), op.get('x', 0), op.get('y', 0),
+                         op.get('color', 'accent'), width=op.get('width', 1.5))
+
+
+def _ops_drawer(surface):
+    def draw(painter):
+        play_ops(painter, surface['ops'])
+    return draw
+
+
+class JsSession:
+    """One Node.js extension process speaking line JSON with the shell.
+
+    The runner (ext-runner.js) loads extension.js, which registers through
+    the api exactly like a Python extension. Draw callbacks cannot cross a
+    process boundary, so JS surfaces pass declarative draw-op lists that
+    this side replays through a Painter; updateWidget/updatePanel replace
+    the stored list. Commands, tray clicks and panel events travel back as
+    messages the runner dispatches to the JS handlers.
+    """
+
+    def __init__(self, extension_id, host, runner, directory):
+        self.id = extension_id
+        self.host = host
+        self.runner = Path(runner)
+        self.directory = Path(directory)
+        self.process = None
+        self.surfaces = {}      # 'widget:<id>' / 'panel:<id>' / 'clock' -> {'ops'}
+        self.panels = {}        # panel id -> PanelHandle
+
+    def start(self):
+        node = shutil.which('node')
+        if node is None:
+            raise ValueError('Node.js runtime not found for a JavaScript extension')
+        context = json.dumps({'settings': self.host.provides['settings'](),
+                              'theme': self.host.provides['theme'](),
+                              'screen': self.host.provides['screen']()})
+        environment = dict(os.environ, DEVOS_EXT_CONTEXT=context)
+        self.process = subprocess.Popen(
+            [node, str(self.runner), str(self.directory)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, bufsize=1, env=environment)
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        for line in self.process.stdout:
+            try:
+                self.handle_line(line)
+            except Exception as error:
+                print('extension %s sent a bad message: %s' % (self.id, error),
+                      file=sys.stderr)
+
+    def send(self, message):
+        if self.process is not None and self.process.stdin:
+            try:
+                self.process.stdin.write(json.dumps(message) + '\n')
+                self.process.stdin.flush()
+            except (OSError, ValueError):
+                pass  # the child is gone; its contributions stay inert
+
+    def handle_line(self, line):
+        message = json.loads(line)
+        kind = message.get('type')
+        if kind == 'command':
+            command_id = str(message['id'])
+            self.host.add_command(
+                self.id, command_id, str(message.get('title', command_id)),
+                lambda: self.send({'type': 'invoke', 'command': command_id}),
+                str(message.get('detail', '')))
+        elif kind == 'tray':
+            self.host.add_tray(self.id, str(message['id']), message['icon'],
+                               message.get('command_id'), message.get('color', 'accent'))
+        elif kind == 'widget':
+            surface = {'ops': validate_ops(message.get('ops', []))}
+            widget_id = str(message.get('id', message['zone']))
+            self.surfaces['widget:' + widget_id] = surface
+            on_click = None
+            if message.get('click'):
+                on_click = lambda: self.send({'type': 'widget_click', 'id': widget_id})
+            self.host.add_widget(self.id, message['zone'], message['width'],
+                                 _ops_drawer(surface), on_click, widget_id)
+        elif kind == 'panel':
+            panel_id = str(message['id'])
+            surface = {'ops': validate_ops(message.get('ops', []))}
+            self.surfaces['panel:' + panel_id] = surface
+
+            def on_event(action, x, y, panel_id=panel_id):
+                self.send({'type': 'panel_event', 'id': panel_id,
+                           'action': action, 'x': x, 'y': y})
+
+            self.panels[panel_id] = self.host.add_panel(
+                self.id, panel_id, message['width'], message['height'],
+                _ops_drawer(surface), on_event, message.get('x', 8))
+        elif kind == 'panel_cmd':
+            handle = self.panels.get(str(message['id']))
+            if handle is not None and message.get('cmd') in ('show', 'hide', 'toggle'):
+                handle.slot['request'] = message['cmd']
+        elif kind == 'update':
+            surface = self.surfaces.get(str(message.get('target', '')) + ':'
+                                        + str(message.get('id', '')))
+            if surface is not None:
+                surface['ops'] = validate_ops(message.get('ops', []))
+        elif kind == 'clock_override':
+            surface = {'ops': validate_ops(message.get('ops', []))}
+            self.surfaces['clock'] = surface
+            self.host.set_clock_override(self.id, message['width'], _ops_drawer(surface))
+        elif kind == 'clock_restore':
+            self.host.clock_override = None
+        elif kind in ('hide', 'show'):
+            self.host.set_hidden(str(message['section']), kind == 'hide')
+        elif kind == 'notify':
+            self.host.provides['notify'](str(message.get('title', '')),
+                                         str(message.get('body', '')))
+        elif kind == 'set_theme':
+            self.host.provides['set_theme'](str(message['path']))
+        elif kind != 'ready':
+            raise ValueError('unknown message type %r' % kind)
+
+    def stop(self):
+        if self.process is None:
+            return
+        try:
+            self.process.stdin.close()
+            self.process.terminate()
+            self.process.wait(timeout=3)
+        except (OSError, subprocess.TimeoutExpired):
+            self.process.kill()
