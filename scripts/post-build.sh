@@ -27,6 +27,9 @@ install -D -m 0644 "$project/config/settings.json" "$target/etc/devos/settings.j
 printf 'desktop\n' > "$target/etc/devos/mode"
 install -D -m 0755 "$project/scripts/devos-desktop-boot" "$target/usr/bin/devos-desktop-boot"
 install -D -m 0755 "$project/tools/dev_greeter.py" "$target/usr/bin/dev-greeter"
+install -D -m 0644 "$project/examples/greeter-extensions/welcome/manifest.json" "$target/usr/share/devos/greeter-extensions/devos.greeter-welcome/manifest.json"
+install -D -m 0644 "$project/examples/greeter-extensions/welcome/extension.py" "$target/usr/share/devos/greeter-extensions/devos.greeter-welcome/extension.py"
+touch "$target/usr/share/devos/greeter-extensions/devos.greeter-welcome/.disabled"
 # tty1 runs the desktop/server session; serial consoles keep their getty.
 sed -i '/^tty1::/d' "$target/etc/inittab"
 printf 'tty1::respawn:/usr/bin/devos-desktop-boot\n' >> "$target/etc/inittab"

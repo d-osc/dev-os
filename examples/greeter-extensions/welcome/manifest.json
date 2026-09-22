@@ -1,0 +1,8 @@
+{
+  "id": "devos.greeter-welcome",
+  "name": "Greeter Welcome",
+  "version": "1.0.0",
+  "description": "Clock and host branding behind the login card",
+  "engine": 1,
+  "main": "extension.py"
+}

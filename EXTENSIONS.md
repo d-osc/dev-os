@@ -157,3 +157,33 @@ host — การติดตั้ง extension คือความยิน
 พิสูจน์บน display จริง: `scripts/test-extensions.py` (โหลด + คำสั่ง + ถาด),
 `scripts/test-gui-extensions.py` (widget + clock override + hide + แผงลอย) และ
 `scripts/test-js-extensions.py` (extension ภาษา JavaScript รันบน Node จริง)
+
+## Greeter extensions (ปรับแต่งหน้า login)
+
+หน้าจอเข้าสู่ระบบกำหนดดีไซน์ผ่าน extension ได้เหมือน taskbar — แต่รัน**ก่อน
+การ login ในบริบท root** จึงโหลดจาก directory ระบบเท่านั้น:
+`/etc/devos/greeter-extensions/` หรือ `/usr/share/devos/greeter-extensions/`
+(ลบ marker `.disabled` เพื่อเปิดใช้ตัวที่มากับ image เช่น
+`devos.greeter-welcome`) — ผู้ดูแลระบบเป็นคนติดตั้งเท่านั้น
+
+```python
+def activate(api):
+    api.set_subtitle('Sign in to your desktop')       # แทนคำว่า Sign in
+
+    def background(painter):                          # ทั้งจอ หลังการ์ด
+        painter.text(time.strftime('%H:%M'), 48, 96, 'dim', 42, True)
+
+    def card(painter):                                # พื้นการ์ด (ฟิลด์ยังวาดทับ)
+        painter.rect(0, 0, painter.width, painter.height, 'chrome')
+
+    api.paint_background(background)
+    api.paint_card(card)
+```
+
+- `paint_background(draw)` / `paint_card(draw)` — Painter เหมือน shell ถูก clip
+  ในกรอบของตัวเอง สีตามธีมปัจจุบัน (greeter โหลดธีม/ฟอนต์จาก settings ชั้นระบบ
+  เหมือนส่วนอื่น) เรียกซ้ำแทนที่ hook เดิม; hook ที่พังวาดกรอบแดงแทน ไม่บั๊ก login
+- ฟิลด์ User/Password/ปุ่ม Log in เป็นของระบบ วาดทับพื้นของ extension เสมอ
+  จึง login ได้เสมอไม่ว่า extension จะวาดอะไร
+- รูปแบบ manifest เหมือน extension ของ shell (engine 1) แต่รับเฉพาะ
+  `extension.py` — JS ยังไม่รองรับในบริบท root นี้

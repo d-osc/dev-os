@@ -1,6 +1,8 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
+import tempfile
 import unittest
 
 TOOLS = Path(__file__).parents[1] / 'tools'
@@ -78,6 +80,64 @@ class EntryWidget(unittest.TestCase):
         entry.feed(0, '\t')
         entry.feed(0x100, 'q')          # non-ASCII keysym chars are ignored
         self.assertEqual(entry.text, 'x' * entry.LIMIT)
+
+
+class GreeterExtensions(unittest.TestCase):
+    MANIFEST = {'id': 'devos.greet', 'name': 'Greet', 'version': '1.0.0',
+                'engine': 1, 'main': 'extension.py'}
+    CODE = '''
+def activate(api):
+    api.paint_background(lambda painter: None)
+    api.paint_card(lambda painter: None)
+    api.set_subtitle('Welcome aboard')
+'''
+
+    def write(self, directory, code=CODE, manifest=None):
+        path = Path(directory) / 'greet'
+        path.mkdir(parents=True)
+        (path / 'manifest.json').write_text(json.dumps(manifest or self.MANIFEST))
+        (path / 'extension.py').write_text(code)
+        return path
+
+    def test_load_registers_hooks_and_subtitle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.write(directory)
+            host = greeter.GreeterHost().load([directory])
+            self.assertEqual(host.loaded, ['devos.greet'])
+            self.assertEqual(host.report, [])
+            self.assertEqual(set(host.hooks), {'background', 'card'})
+            self.assertEqual(host.subtitle, 'Welcome aboard')
+
+    def test_disabled_broken_and_javascript_are_handled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.write(directory)
+            greeter.GreeterHost().load([directory])            # loads fine
+            hidden = Path(directory) / 'greet' / '.disabled'
+            hidden.write_text('')
+            host = greeter.GreeterHost().load([directory])
+            self.assertEqual(host.loaded, [])                   # marker skips it
+            hidden.unlink()
+            self.write(Path(directory) / 'broken',
+                       code='raise RuntimeError("boom")\n')
+            host = greeter.GreeterHost().load([directory])
+            self.assertEqual(host.loaded, ['devos.greet'])      # broken reported
+            self.assertEqual(len(host.report), 1)
+            js = Path(directory) / 'js'
+            js.mkdir()
+            (js / 'manifest.json').write_text(
+                json.dumps(dict(self.MANIFEST, main='extension.js')))
+            (js / 'extension.js').write_text('module.exports = {};\n')
+            host = greeter.GreeterHost().load([directory])
+            self.assertEqual(len(host.report), 2)               # JS refused clearly
+            self.assertIn('Python', host.report[1]['error'])
+
+    def test_bad_hooks_are_rejected(self):
+        host = greeter.GreeterHost()
+        host.add_paint('background', 'devos.greet', lambda painter: None)
+        with self.assertRaises(ValueError):
+            host.add_paint('sidebar', 'devos.greet', lambda painter: None)
+        with self.assertRaises(ValueError):
+            host.add_paint('card', 'devos.greet', 'not callable')
 
 
 if __name__ == '__main__':

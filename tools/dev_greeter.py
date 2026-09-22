@@ -19,10 +19,101 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.append('/usr/lib/devos')
+import dev_extensions  # noqa: E402
 import dev_gui  # noqa: E402
+import dev_settings  # noqa: E402
 import dev_theme  # noqa: E402
 
 CARD_WIDTH, CARD_HEIGHT = 380, 344
+GREETER_DIRS = (Path('/etc/devos/greeter-extensions'),
+                Path('/usr/share/devos/greeter-extensions'))
+
+
+class GreeterApi:
+    """Design API for login-screen extensions (version 1).
+
+    paint_background(draw) paints the whole screen behind the card and
+    paint_card(draw) replaces the card surface beneath the stock fields;
+    draw receives a Painter in theme colors, clipped to its area. Calling
+    more than once replaces the earlier hook. Extensions here run as root
+    before any login — only administrators install them, from the system
+    greeter-extension directories.
+    """
+
+    version = 1
+
+    def __init__(self, host, manifest):
+        self._host, self.manifest = host, manifest
+
+    def paint_background(self, draw):
+        self._host.add_paint('background', self.manifest['id'], draw)
+
+    def paint_card(self, draw):
+        self._host.add_paint('card', self.manifest['id'], draw)
+
+    def set_subtitle(self, text):
+        self._host.subtitle = str(text)[:80]
+
+
+class GreeterHost:
+    """Loads the root-context design extensions of the login screen."""
+
+    def __init__(self):
+        self.hooks = {}          # 'background'/'card' -> (owner id, draw)
+        self.subtitle = None
+        self.loaded, self.report = [], []
+
+    def add_paint(self, target, owner, draw):
+        if target not in ('background', 'card'):
+            raise ValueError('Greeter paint hook must be background or card')
+        if not callable(draw):
+            raise ValueError('Paint hook must be callable')
+        self.hooks[target] = (owner, draw)
+
+    def _manifest_of(self, path):
+        raw = (path / 'manifest.json').read_bytes()
+        if len(raw) > dev_extensions.MANIFEST_LIMIT:
+            raise ValueError('Manifest exceeds the size limit')
+        manifest = dev_extensions.validate(json.loads(raw))
+        if manifest['main'] != 'extension.py':
+            raise ValueError('Greeter extensions are Python for now '
+                             "(extension.py, not %s)" % manifest['main'])
+        return manifest
+
+    def load(self, directories):
+        import importlib.util
+        for directory in directories:
+            directory = Path(directory)
+            if not directory.is_dir():
+                continue
+            for path in sorted(directory.iterdir()):
+                if not path.is_dir() or path.name.startswith('.') \
+                        or (path / '.disabled').is_file():
+                    continue
+                try:
+                    manifest = self._manifest_of(path)
+                    code = path / manifest['main']
+                    if code.stat().st_size > dev_extensions.CODE_LIMIT:
+                        raise ValueError('Extension code exceeds the size limit')
+                    module_name = 'devos_greeter_' + manifest['id'].replace('.', '_')
+                    spec = importlib.util.spec_from_file_location(module_name, code)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    if hasattr(module, 'activate'):
+                        module.activate(GreeterApi(self, manifest))
+                    self.loaded.append(manifest['id'])
+                except Exception as error:         # a broken extension never
+                    self.report.append({'id': path.name, 'error': str(error)})  # blocks login
+        return self
+
+
+def greeter_theme(settings):
+    """The system theme for the login screen; built-in on any problem."""
+    try:
+        path = dev_settings.theme_path(settings['theme'])
+        return dev_theme.load(path) if path else dev_gui.DEFAULT_THEME
+    except (OSError, ValueError):
+        return dev_gui.DEFAULT_THEME
 
 
 def login_users(passwd_text):
@@ -120,7 +211,14 @@ def wait_session(pid, authority):
             pass
 
 
-def run(shot=None):
+def run(shot=None, extension_dirs=None):
+    settings = dev_settings.active()
+    dev_gui.set_theme(greeter_theme(settings))
+    dev_gui.set_font(settings['font.family'])
+    host = GreeterHost().load(extension_dirs or GREETER_DIRS)
+    for broken in host.report:
+        print('greeter extension %s failed: %s' % (broken['id'], broken['error']),
+              file=sys.stderr)
     x, api = dev_gui.connect()
     cairo = dev_gui.Cairo()
     display = api['open_display'](None)
@@ -183,23 +281,48 @@ def run(shot=None):
 
     login_button.callback = attempt
 
+    def paint_hook(target, x, y, w, h):
+        """Run one extension paint hook inside its clipped area; never fatal."""
+        hook = host.hooks.get(target)
+        if hook is None:
+            return False
+        cairo.save(cr)
+        cairo.rectangle(cr, x, y, w, h)
+        cairo.clip(cr)
+        painter = dev_extensions.Painter(cairo, cr, x, y, w, h,
+                                         dev_gui.THEME_COLORS, tk._extents)
+        try:
+            hook[1](painter)
+        except Exception as error:
+            print('greeter extension %s failed to draw: %s' % (hook[0], error),
+                  file=sys.stderr)
+            cairo.set_rgba(cr, 1.0, 0.27, 0.27, 0.35)
+            cairo.rounded(cr, x, y, w, h, 4)
+            cairo.fill(cr)
+        finally:
+            cairo.restore(cr)
+        return True
+
     def draw():
         cairo.set_rgba(cr, *dev_gui.PALETTE['bg'], 1.0)
         cairo.paint(cr)
+        paint_hook('background', 0, 0, width, height)
         radius = dev_theme.corner_radius(dev_gui.CORNERS, 'window', CARD_WIDTH,
                                          CARD_HEIGHT)
-        cairo.set_rgba(cr, *dev_gui.PALETTE['chrome'], 1.0)
-        cairo.rounded(cr, card_x, card_y, CARD_WIDTH, CARD_HEIGHT, radius)
-        cairo.fill(cr)
-        cairo.set_rgba(cr, *dev_gui.PALETTE['line'], 1.0)
-        cairo.set_line_width(cr, 1)
-        cairo.rounded(cr, card_x + 0.5, card_y + 0.5, CARD_WIDTH - 1, CARD_HEIGHT - 1,
-                      radius)
-        cairo.stroke(cr)
+        if not paint_hook('card', card_x, card_y, CARD_WIDTH, CARD_HEIGHT):
+            cairo.set_rgba(cr, *dev_gui.PALETTE['chrome'], 1.0)
+            cairo.rounded(cr, card_x, card_y, CARD_WIDTH, CARD_HEIGHT, radius)
+            cairo.fill(cr)
+            cairo.set_rgba(cr, *dev_gui.PALETTE['line'], 1.0)
+            cairo.set_line_width(cr, 1)
+            cairo.rounded(cr, card_x + 0.5, card_y + 0.5, CARD_WIDTH - 1,
+                          CARD_HEIGHT - 1, radius)
+            cairo.stroke(cr)
         dev_theme.draw_icon(cairo, cr, dev_gui.ICONS['mark'], card_x + 36, card_y + 26,
                             dev_gui.THEME_COLORS['accent'], dev_gui.THEME_COLORS, 1.5)
         tk.text(cr, 'DEV OS', card_x + 64, card_y + 48, dev_gui.PALETTE['text'], 18.0, True)
-        tk.text(cr, 'Sign in', card_x + 36, card_y + 78, dev_gui.PALETTE['dim'], 11.0)
+        tk.text(cr, host.subtitle or 'Sign in', card_x + 36, card_y + 78,
+                dev_gui.PALETTE['dim'], 11.0)
         for entry in entries:
             entry.draw(tk, cr)
         login_button.draw(tk, cr)
@@ -263,7 +386,8 @@ def run(shot=None):
                 x.XFree(pointer)
             running = False
         time.sleep(0.05)
-    return {'screen': [width, height], 'users': [name for name, _ in users]}
+    return {'screen': [width, height], 'users': [name for name, _ in users],
+            'greeter_extensions': host.loaded}
 
 
 class _TextAdapter:
@@ -292,8 +416,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--screenshot', type=Path,
                         help='render the login screen once, capture a PNG, exit')
+    parser.add_argument('--greeter-extensions', type=Path,
+                        help='greeter extensions directory override (default: '
+                             '/etc/devos/greeter-extensions then '
+                             '/usr/share/devos/greeter-extensions)')
     args = parser.parse_args()
-    result = run(shot=str(args.screenshot) if args.screenshot else None)
+    result = run(shot=str(args.screenshot) if args.screenshot else None,
+                 extension_dirs=[args.greeter_extensions]
+                 if args.greeter_extensions else None)
     print(json.dumps(result))
     if args.screenshot:
         print('Screenshot: ' + str(args.screenshot))
