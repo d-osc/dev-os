@@ -207,6 +207,47 @@ class ExtensionApi:
         self._host.provides['set_theme'](str(path))
 
 
+def version_key(version):
+    """Manifest versions are MAJOR.MINOR.PATCH; compare numerically."""
+    return tuple(int(part) for part in version.split('.'))
+
+
+def resolve_duplicates(dirs):
+    """Disable redundant copies of one extension id (duplicate work).
+
+    Two enabled copies of an id mean duplicate commands, tray icons and
+    widget rendering — and for JavaScript extensions a whole extra Node
+    process. The highest version wins (ties prefer the user copy, like
+    the settings layers) and every other enabled copy gets a .disabled
+    marker so it stays off at the next boot too. Returns one report line
+    per action; copies that cannot be marked are only skipped in memory.
+    """
+    grouped = {}
+    for entry in scan(dirs):
+        if entry.get('invalid') or entry['disabled']:
+            continue
+        grouped.setdefault(entry['id'], []).append(entry)
+    actions = []
+    for identifier, copies in sorted(grouped.items()):
+        if len(copies) < 2:
+            continue
+        winner = max(copies, key=lambda entry: (version_key(entry['version']),
+                                                entry['source'] == 'user'))
+        for entry in copies:
+            if entry['path'] == winner['path']:
+                continue
+            try:
+                (entry['path'] / '.disabled').touch()
+                actions.append('disabled %s %s (%s copy); kept %s %s'
+                               % (identifier, entry['version'], entry['source'],
+                                  identifier, winner['version']))
+            except OSError:
+                actions.append('skipped %s %s (%s copy) for this session only; '
+                               'marking it needs root'
+                               % (identifier, entry['version'], entry['source']))
+    return actions
+
+
 class Host:
     """Loads extensions and keeps what they contributed."""
 
@@ -224,8 +265,10 @@ class Host:
         self.report = []            # {'id','error'} for broken extensions
 
     def load(self, directories):
-        seen = set()
-        for directory in directories:
+        for action in resolve_duplicates(directories):
+            print('extension dedup: ' + action, file=sys.stderr)
+        best = {}
+        for index, directory in enumerate(directories):
             directory = Path(directory)
             if not directory.is_dir():
                 continue
@@ -233,20 +276,30 @@ class Host:
                 if not path.is_dir() or path.name.startswith('.') \
                         or (path / '.disabled').is_file():
                     continue
-                if path.name in seen:
-                    continue
-                seen.add(path.name)
                 try:
-                    self._load_one(path)
+                    manifest = self._manifest_of(path)
                 except Exception as error:            # a bad extension never
                     self.report.append({'id': path.name, 'error': str(error)})  # kills the shell
+                    continue
+                rank = (version_key(manifest['version']), -index)
+                current = best.get(manifest['id'])
+                if current is None or rank > current[0]:
+                    best[manifest['id']] = (rank, path)
+        for identifier, (_, path) in sorted(best.items()):
+            try:
+                self._load_one(path)
+            except Exception as error:
+                self.report.append({'id': identifier, 'error': str(error)})
         return self
 
-    def _load_one(self, path):
+    def _manifest_of(self, path):
         raw = (path / 'manifest.json').read_bytes()
         if len(raw) > MANIFEST_LIMIT:
             raise ValueError('Manifest exceeds %d bytes' % MANIFEST_LIMIT)
-        manifest = validate(json.loads(raw))
+        return validate(json.loads(raw))
+
+    def _load_one(self, path):
+        manifest = self._manifest_of(path)
         code = path / manifest['main']
         size = code.stat().st_size
         if size > CODE_LIMIT:
@@ -662,7 +715,7 @@ def set_state(extension_id, dirs, disabled):
 
 
 def manage(args, root='/'):
-    """The `dev ext list|install|uninstall|enable|disable` command."""
+    """The `dev ext list|install|uninstall|enable|disable|dedup` command."""
     dirs = extension_dirs(root)
     if args.action == 'list':
         entries = scan(dirs)
@@ -673,6 +726,13 @@ def manage(args, root='/'):
                   % (entry['id'], entry['version'], entry['name'][:26],
                      'disabled' if entry['disabled'] else 'enabled',
                      entry['source']))
+        return 0
+    if args.action == 'dedup':
+        actions = resolve_duplicates(dirs)
+        if not actions:
+            print('No duplicate extensions found')
+        for action in actions:
+            print(action)
         return 0
     if not args.target:
         raise ValueError('dev ext %s needs an extension id or directory' % args.action)

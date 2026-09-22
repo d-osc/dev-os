@@ -381,5 +381,66 @@ class ZoneLayout(unittest.TestCase):
         self.assertEqual(extensions.zone_layout(50, [80, 80]), [None, None])
 
 
+class Dedup(unittest.TestCase):
+    def setUp(self):
+        self._previous = os.environ.get(extensions.USER_ENV)
+        self.home = tempfile.TemporaryDirectory()
+        os.environ[extensions.USER_ENV] = str(Path(self.home.name) / 'user')
+        self.addCleanup(self.home.cleanup)
+        if self._previous is None:
+            self.addCleanup(os.environ.pop, extensions.USER_ENV, None)
+        else:
+            self.addCleanup(os.environ.__setitem__, extensions.USER_ENV, self._previous)
+
+    def write_copy(self, base, source, version):
+        path = Path(base) / 'devos.demo'
+        path.mkdir(parents=True)
+        (path / 'manifest.json').write_text(json.dumps(
+            dict(GOOD_MANIFEST, version=version)))
+        (path / 'extension.py').write_text(source)
+        return path
+
+    def test_older_system_copy_is_disabled_by_the_newer_user_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            system = self.write_copy(Path(directory) / 'system', GOOD_CODE, '1.0.0')
+            user = self.write_copy(Path(self.home.name) / 'user', GOOD_CODE, '2.0.0')
+            actions = extensions.resolve_duplicates([user.parent, system.parent])
+            self.assertEqual(len(actions), 1)
+            self.assertIn('disabled devos.demo 1.0.0 (system copy)', actions[0])
+            states = {str(entry['path']): entry['disabled']
+                      for entry in extensions.scan([user.parent, system.parent])}
+            self.assertFalse(states[str(user)])     # winner stays enabled
+            self.assertTrue(states[str(system)])    # older copy is disabled
+            host = extensions.Host(provides()).load([user.parent, system.parent])
+            self.assertEqual(host.loaded, ['devos.demo'])   # loaded exactly once
+            self.assertEqual(len(host.commands), 1)
+            host.unload()
+
+    def test_higher_version_wins_even_when_it_is_the_system_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            system = self.write_copy(Path(directory) / 'system', GOOD_CODE, '3.0.0')
+            user = self.write_copy(Path(self.home.name) / 'user', GOOD_CODE, '2.0.0')
+            actions = extensions.resolve_duplicates([user.parent, system.parent])
+            self.assertIn('disabled devos.demo 2.0.0 (user copy)', actions[0])
+            host = extensions.Host(provides()).load([user.parent, system.parent])
+            self.assertEqual(host.loaded, ['devos.demo'])
+            self.assertEqual(len(host.commands), 1)
+            host.unload()
+
+    def test_cli_dedup_reports_and_settles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.write_copy(Path(directory) / 'usr/share/devos/extensions',
+                            GOOD_CODE, '1.0.0')
+            self.write_copy(Path(self.home.name) / 'user', GOOD_CODE, '1.0.0')
+            environment = dict(os.environ)
+            first = subprocess.run(DEV + ['--root', directory, 'ext', 'dedup'],
+                                   capture_output=True, text=True, env=environment)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertIn('disabled devos.demo', first.stdout)
+            again = subprocess.run(DEV + ['--root', directory, 'ext', 'dedup'],
+                                   capture_output=True, text=True, env=environment)
+            self.assertIn('No duplicate extensions found', again.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

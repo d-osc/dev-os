@@ -1096,8 +1096,9 @@ def main():
     p = commands.add_parser('mode', help='show the system mode, or set it: desktop (default) or server')
     p.add_argument('action', nargs='?', help='omit to show the mode; "set" to change it (needs root on the real system)')
     p.add_argument('value', nargs='?', help='desktop or server')
-    p = commands.add_parser('ext', help='manage desktop extensions: list, install <dir>, uninstall/enable/disable <id>')
-    p.add_argument('action', choices=('list', 'install', 'uninstall', 'enable', 'disable'))
+    p = commands.add_parser('ext', help='manage desktop extensions: list, install <dir>, uninstall/enable/disable <id>, dedup')
+    p.add_argument('action',
+                   choices=('list', 'install', 'uninstall', 'enable', 'disable', 'dedup'))
     p.add_argument('target', nargs='?', help='extension id, or source directory for install')
     p = commands.add_parser('info'); p.add_argument('package')
     for command in ('start', 'open', 'launch', 'stop', 'status', '_background'):

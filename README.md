@@ -67,7 +67,8 @@ login console และ dev-shell ปฏิเสธการทำงาน) �
 ด้วย `sudo dev mode set server` / `sudo dev mode set desktop` (เก็บที่
 `/etc/devos/mode` มีผลตั้งแต่บูตครั้งถัดไป) — พฤติกรรมบูตนี้อยู่ใน rebuild ครั้งถัดไป
 extension ของ desktop จัดการได้ด้วย `dev ext list|install|uninstall|enable|disable`
-ตามรายละเอียดใน [EXTENSIONS.md](EXTENSIONS.md)
+และตรวจงานซ้ำซ้อนด้วย `dev ext dedup` (สำเนาเก่าของ extension เดียวกันถูก disable
+อัตโนมัติเพื่อไม่เปลืองทรัพยากร) ตามรายละเอียดใน [EXTENSIONS.md](EXTENSIONS.md)
 
 ## Build บน Linux / WSL2
 
