@@ -334,14 +334,18 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     delete = api['atom'](display, b'WM_DELETE_WINDOW', 1)
     api['set_protocols'](display, bar, c.byref(c.c_ulong(delete)), 1)
 
-    root_surface = root_cr = None
+    # The desktop wallpaper lives on its own bottom-of-stack window: drawing
+    # on the root window itself cannot be captured and does not survive
+    # exposes on every X server.
+    desktop_window = desktop_surface = desktop_cr = None
     if settings.get('desktop.background', 'none') != 'none':
         import dev_background
-        root_surface = cairo.surface_create(display, root_window, default_visual,
-                                            width, height)
-        root_cr = cairo.create(root_surface)
-        dev_background.render(cairo, root_cr, width, height,
-                              settings['desktop.background'], DESIGN['bg'])
+        desktop_window = api['create'](display, root_window, 0, 0, width, height,
+                                       1, 0x0b0f16, 0x0b0f16)
+        api['store_name'](display, desktop_window, b'Dev OS Desktop')
+        desktop_surface = cairo.surface_create(display, desktop_window,
+                                               default_visual, width, height)
+        desktop_cr = cairo.create(desktop_surface)
 
     bar_surface = cairo.surface_create(display, bar, default_visual, width, BAR_HEIGHT)
     cr_bar = cairo.create(bar_surface)
@@ -751,12 +755,26 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     api['select_input'](display, bar, (1 << 15) | (1 << 2) | (1 << 3) | (1 << 6))
     api['select_input'](display, menu, (1 << 15) | (1 << 2) | (1 << 6))
     api['select_input'](display, root_window, 1 << 18)
+    if desktop_window:
+        api['map'](display, desktop_window)
+
+    def paint_desktop():
+        # Repainted every loop pass like the bar: XWayland drops pixels
+        # drawn before a window is mapped and the first use of a fresh
+        # image surface, so steady redraw is the only reliable recipe.
+        dev_background.render(cairo, desktop_cr, width, height,
+                              settings['desktop.background'], DESIGN['bg'])
+        cairo.surface_flush(desktop_surface)
+        api['flush'](display)
+
     api['map'](display, bar)
     running = True
     started = time.monotonic()
     captured = shots is None
     while running:
         geometry = menu_geometry(width, height, len(entries), consent is not None)
+        if desktop_window:
+            paint_desktop()
         tasks = draw_bar()
         if menu_open:
             draw_menu(geometry)
@@ -876,6 +894,10 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             draw_menu(geometry)
             api['sync'](display, 0)
             screenshot(x, api, display, menu, shots[1], geometry['width'], geometry['height'])
+            if desktop_window:
+                screenshot(x, api, display, desktop_window,
+                           shots[0].rsplit('-bar', 1)[0] + '-desktop.png',
+                           width, height)
             for handle in (host.panels if host else []):
                 if handle.slot['visible']:
                     state = panel_state[handle.spec['id']]

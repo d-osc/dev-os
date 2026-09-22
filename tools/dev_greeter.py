@@ -19,7 +19,6 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.append('/usr/lib/devos')
-import dev_background  # noqa: E402
 import dev_extensions  # noqa: E402
 import dev_gui  # noqa: E402
 import dev_settings  # noqa: E402
@@ -307,9 +306,6 @@ def run(shot=None, extension_dirs=None):
     def draw():
         cairo.set_rgba(cr, *dev_gui.PALETTE['bg'], 1.0)
         cairo.paint(cr)
-        dev_background.render(cairo, cr, width, height,
-                              settings.get('desktop.background', 'none'),
-                              dev_gui.PALETTE['bg'])
         paint_hook('background', 0, 0, width, height)
         radius = dev_theme.corner_radius(dev_gui.CORNERS, 'window', CARD_WIDTH,
                                          CARD_HEIGHT)

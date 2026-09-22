@@ -38,9 +38,10 @@
 
 ## พื้นหลัง desktop (desktop.background)
 
-ใช้ได้ทั้งบนหน้าจอ desktop (shell วาดบน root window) และหน้า login (วาดใต่
-การ์ดและ greeter extension hooks) ทุกแบบวาดแบบ **cover** (เต็มจอ คงสัดส่วน
-ตัดขอบเกิน):
+เป็น**ภาพพื้นหลังของหน้าจอ desktop เท่านั้น** — shell วาดลงหน้าต่าง desktop
+ของตัวเอง (แผนหลังสุดใต้ทุกหน้าต่าง) ไม่เกี่ยวกับหน้า login ซึ่งใช้สีธีม
+และปรับแต่งผ่าน greeter extension (`paint_background`) แทน วาดแบบ **cover**
+(เต็มจอ คงสัดส่วน ตัดขอบเกิน):
 
 - **`.png`** — ถอดรหัสด้วย cairo โดยตรง
 - **`.jpg` / `.jpeg`** — ถอดรหัสผ่าน TurboJPEG (libturbojpeg มาพร้อม image)

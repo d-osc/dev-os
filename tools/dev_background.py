@@ -329,28 +329,36 @@ def _jpeg_surface(cairo, path):
         turbo.tjDestroy(handle)
 
 
+_SURFACE_CACHE = {}
+
+
 def _image_surface(cairo, path, kind):
+    """Decode (and cache) a wallpaper image; callers must not destroy it."""
+    key = str(path)
+    if key in _SURFACE_CACHE:
+        return _SURFACE_CACHE[key]
     if path.stat().st_size > IMAGE_LIMIT:
         raise ValueError('Image exceeds %d bytes' % IMAGE_LIMIT)
     if kind == 'png':
         surface = cairo.surface_from_png(str(path).encode())
         if not surface:
             raise ValueError('cairo could not decode the PNG')
-        return surface
-    return _jpeg_surface(cairo, path)
+    else:
+        surface = _jpeg_surface(cairo, path)
+    _SURFACE_CACHE[key] = surface
+    if len(_SURFACE_CACHE) > 4:
+        _SURFACE_CACHE.pop(next(iter(_SURFACE_CACHE)))
+    return surface
 
 
 def _paint_image(cairo, cr, surface, width, height, x=0.0, y=0.0):
-    try:
-        scale, dx, dy = _cover(cairo.image_width(surface),
-                               cairo.image_height(surface), width, height)
-        cairo.save(cr)
-        cairo.scale(cr, scale, scale)
-        cairo.set_source_surface(cr, surface, (x + dx) / scale, (y + dy) / scale)
-        cairo.paint(cr)
-        cairo.restore(cr)
-    finally:
-        cairo.surface_destroy(surface)
+    scale, dx, dy = _cover(cairo.image_width(surface),
+                           cairo.image_height(surface), width, height)
+    cairo.save(cr)
+    cairo.scale(cr, scale, scale)
+    cairo.set_source_surface(cr, surface, (x + dx) / scale, (y + dy) / scale)
+    cairo.paint(cr)
+    cairo.restore(cr)
 
 
 def _paint_svg(cairo, cr, width, height, view, shapes):
@@ -430,6 +438,7 @@ def _paint_html(cairo, cr, width, height, background, items, source):
                 surface = cairo.surface_from_png(str(resolved).encode())
                 if surface:
                     _paint_image(cairo, cr, surface, width, height)
+                    cairo.surface_destroy(surface)
 
 
 def render(cairo, cr, width, height, value, fallback):

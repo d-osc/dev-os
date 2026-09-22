@@ -10,8 +10,6 @@ import sys
 import tempfile
 
 PROJECT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT / 'tools'))
-import dev_gui  # noqa: E402  (PNG writer for the fixture)
 
 PNG_FIXTURE = 'out/greeter-tests/bg-png.png'
 JPG_FIXTURE = 'out/greeter-tests/bg-jpg.jpg'
@@ -47,14 +45,19 @@ def near(actual, expected, slack=70):
     return all(abs(a - b) <= slack for a, b in zip(actual, expected))
 
 
-def shoot(settings_dir, shot):
+def shoot(settings_dir, prefix):
+    """Run the desktop shell with these settings; returns the root shot path."""
     environment = dict(os.environ, DEVOS_SETTINGS=str(settings_dir))
     completed = subprocess.run(
-        [sys.executable, str(PROJECT / 'tools/dev_greeter.py'),
-         '--screenshot', str(shot)],
+        [sys.executable, str(PROJECT / 'tools/dev_shell.py'),
+         '--screenshot-prefix', str(prefix)],
         capture_output=True, text=True, timeout=60, env=environment)
     if completed.returncode != 0:
         raise SystemExit(completed.stdout + completed.stderr)
+    root = Path(str(prefix) + '-desktop.png')
+    if not root.is_file():
+        raise SystemExit('the shell did not capture the desktop window')
+    return root
 
 
 def main():
@@ -65,33 +68,26 @@ def main():
     if os.name != 'posix' or not os.environ.get('DISPLAY'):
         raise SystemExit('Run inside an X11 session such as WSLg (DISPLAY must be set)')
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    red = bytearray()
-    for _ in range(64):
-        red += bytes((255, 30, 30)) * 64
-    dev_gui.write_png(args.output.parent / 'bg-png.png', 64, 64, [red[i * 192:(i + 1) * 192] for i in range(64)])
     checks = []
     with tempfile.TemporaryDirectory(prefix='devos-bg-') as temporary:
         home = Path(temporary)
         (home / 'bg.svg').write_text(SVG)
         (home / 'bg.html').write_text(HTML)
-        cases = [('png', str(args.output.parent / 'bg-png.png'), (255, 30, 30)),
-                 ('svg', str(home / 'bg.svg'), (0, 128, 0)),
+        cases = [('svg', str(home / 'bg.svg'), (0, 128, 0)),
                  ('html', str(home / 'bg.html'), None)]
-        jpg_path = None
         try:
             from PIL import Image
-            jpg_path = home / 'bg.jpg'
+            Image.new('RGB', (64, 64), (255, 30, 30)).save(home / 'bg.png', 'PNG')
+            cases.insert(0, ('png', str(home / 'bg.png'), (255, 30, 30)))
             image = Image.new('RGB', (96, 96), (30, 30, 255))
-            image.save(jpg_path, 'JPEG', quality=95)
+            image.save(home / 'bg.jpg', 'JPEG', quality=95)
+            cases.insert(1, ('jpg', str(home / 'bg.jpg'), (30, 30, 255)))
         except ImportError:
-            checks.append('jpg case skipped: Pillow not available for the fixture')
-        if jpg_path:
-            cases.insert(1, ('jpg', str(jpg_path), (30, 30, 255)))
+            checks.append('png/jpg cases skipped: Pillow not available for fixtures')
         for name, value, expected in cases:
             settings = home / ('settings-%s.json' % name)
             settings.write_text(json.dumps({'desktop.background': value}))
-            shot = home / ('shot-%s.png' % name)
-            shoot(settings, shot)
+            shot = shoot(settings, home / ('shot-%s' % name))
             width, height, raw = png_pixels(shot)
             corners = [pixel(raw, width, 40, 40), pixel(raw, width, width - 40, 40),
                        pixel(raw, width, 40, height - 40)]
@@ -106,8 +102,8 @@ def main():
                           '(corners %s)' % (name, corners[0]))
         settings = home / 'settings-color.json'
         settings.write_text(json.dumps({'desktop.background': '#1e3a5f'}))
-        shoot(settings, home / 'shot-color.png')
-        width, height, raw = png_pixels(home / 'shot-color.png')
+        width, height, raw = png_pixels(
+            shoot(settings, home / 'shot-color'))
         assert near(pixel(raw, width, 40, 40), (0x1e, 0x3a, 0x5f)), 'color background'
         checks.append('#RRGGBB color background rendered')
     report = {'passed': True, 'checks': checks,
