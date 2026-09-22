@@ -27,6 +27,10 @@ install -D -m 0644 "$project/config/settings.json" "$target/etc/devos/settings.j
 printf 'desktop\n' > "$target/etc/devos/mode"
 install -D -m 0755 "$project/scripts/devos-desktop-boot" "$target/usr/bin/devos-desktop-boot"
 install -D -m 0755 "$project/tools/dev_greeter.py" "$target/usr/bin/dev-greeter"
+# The xorg-server package ships S40xorg, which pre-starts "Xorg :0.0" at
+# boot; the desktop session must own the server instead (xinit per tty1),
+# otherwise xinit collides with the already-active display and respawns.
+rm -f "$target/etc/init.d/S40xorg"
 install -D -m 0644 "$project/examples/greeter-extensions/welcome/manifest.json" "$target/usr/share/devos/greeter-extensions/devos.greeter-welcome/manifest.json"
 install -D -m 0644 "$project/examples/greeter-extensions/welcome/extension.py" "$target/usr/share/devos/greeter-extensions/devos.greeter-welcome/extension.py"
 touch "$target/usr/share/devos/greeter-extensions/devos.greeter-welcome/.disabled"
