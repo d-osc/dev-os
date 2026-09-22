@@ -66,6 +66,8 @@ GUI: X + desktop shell บน tty1 อัตโนมัติ) และ `serve
 login console และ dev-shell ปฏิเสธการทำงาน) ดูค่าปัจจุบันด้วย `dev mode` และสลับ
 ด้วย `sudo dev mode set server` / `sudo dev mode set desktop` (เก็บที่
 `/etc/devos/mode` มีผลตั้งแต่บูตครั้งถัดไป) — พฤติกรรมบูตนี้อยู่ใน rebuild ครั้งถัดไป
+extension ของ desktop จัดการได้ด้วย `dev ext list|install|uninstall|enable|disable`
+ตามรายละเอียดใน [EXTENSIONS.md](EXTENSIONS.md)
 
 ## Build บน Linux / WSL2
 

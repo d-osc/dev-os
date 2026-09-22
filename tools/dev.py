@@ -1096,6 +1096,9 @@ def main():
     p = commands.add_parser('mode', help='show the system mode, or set it: desktop (default) or server')
     p.add_argument('action', nargs='?', help='omit to show the mode; "set" to change it (needs root on the real system)')
     p.add_argument('value', nargs='?', help='desktop or server')
+    p = commands.add_parser('ext', help='manage desktop extensions: list, install <dir>, uninstall/enable/disable <id>')
+    p.add_argument('action', choices=('list', 'install', 'uninstall', 'enable', 'disable'))
+    p.add_argument('target', nargs='?', help='extension id, or source directory for install')
     p = commands.add_parser('info'); p.add_argument('package')
     for command in ('start', 'open', 'launch', 'stop', 'status', '_background'):
         p = commands.add_parser(command)
@@ -1140,6 +1143,11 @@ def main():
                 require(args.value is not None, 'Usage: dev mode set desktop|server')
                 dev_settings.write_mode(root, args.value)
                 print('Mode set to ' + args.value + ' (takes effect at next boot)')
+        elif args.command == 'ext':
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            sys.path.append('/usr/lib/devos')
+            import dev_extensions
+            return dev_extensions.manage(args, root)
         elif args.command == 'build':
             build(args.source, args.output)
         elif args.command == 'install':

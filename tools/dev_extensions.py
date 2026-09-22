@@ -230,7 +230,8 @@ class Host:
             if not directory.is_dir():
                 continue
             for path in sorted(directory.iterdir()):
-                if not path.is_dir() or path.name.startswith('.'):
+                if not path.is_dir() or path.name.startswith('.') \
+                        or (path / '.disabled').is_file():
                     continue
                 if path.name in seen:
                     continue
@@ -551,3 +552,136 @@ class JsSession:
             self.process.wait(timeout=3)
         except (OSError, subprocess.TimeoutExpired):
             self.process.kill()
+
+
+# --------------------------------------------------------------- management
+
+USER_ENV = 'DEVOS_EXTENSIONS_USER'
+SOURCE_FILE_LIMIT = 16
+SOURCE_SIZE_LIMIT = 256 * 1024
+
+
+def extension_dirs(root='/'):
+    """[user, system] extension directories; the env var exists for tests."""
+    user = Path(os.environ.get(USER_ENV) or Path.home() / '.config/devos/extensions')
+    return [user, Path(root) / 'usr/share/devos/extensions']
+
+
+def scan(dirs):
+    """Catalog every extension across directories with its state."""
+    found = []
+    for index, directory in enumerate(dirs):
+        directory = Path(directory)
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.iterdir()):
+            if not path.is_dir() or path.name.startswith('.'):
+                continue
+            entry = {'source': 'user' if index == 0 else 'system', 'path': path,
+                     'disabled': (path / '.disabled').is_file()}
+            try:
+                raw = (path / 'manifest.json').read_bytes()
+                if len(raw) > MANIFEST_LIMIT:
+                    raise ValueError('oversized manifest')
+                manifest = validate(json.loads(raw))
+                entry.update(id=manifest['id'], name=manifest['name'],
+                             version=manifest['version'])
+            except (OSError, ValueError) as error:
+                entry.update(id=path.name, name='(invalid: %s)' % error,
+                             version='-', invalid=True)
+            found.append(entry)
+    return found
+
+
+def _check_source(source):
+    """Validate an extension directory before it may be installed."""
+    path = Path(source)
+    if not path.is_dir():
+        raise ValueError('Extension source must be a directory')
+    if not (path / 'manifest.json').is_file():
+        raise ValueError('manifest.json is missing')
+    raw = (path / 'manifest.json').read_bytes()
+    if len(raw) > MANIFEST_LIMIT:
+        raise ValueError('Manifest exceeds %d bytes' % MANIFEST_LIMIT)
+    manifest = validate(json.loads(raw))
+    main = path / manifest['main']
+    if not main.is_file():
+        raise ValueError('Main file %s is missing' % manifest['main'])
+    if main.stat().st_size > CODE_LIMIT:
+        raise ValueError('Extension code exceeds %d bytes' % CODE_LIMIT)
+    files = total = 0
+    for item in path.iterdir():
+        if item.is_symlink():
+            raise ValueError('Symlinks are not allowed in an extension')
+        if not item.is_file():
+            raise ValueError('Subdirectories are not allowed in an extension')
+        files += 1
+        total += item.stat().st_size
+    if files > SOURCE_FILE_LIMIT:
+        raise ValueError('Extensions may carry at most %d files' % SOURCE_FILE_LIMIT)
+    if total > SOURCE_SIZE_LIMIT:
+        raise ValueError('Extensions may total at most %d bytes' % SOURCE_SIZE_LIMIT)
+    return manifest
+
+
+def install(source, dirs):
+    """Copy a validated extension directory into the user directory."""
+    manifest = _check_source(source)
+    destination = Path(dirs[0]) / manifest['id']
+    if destination.exists():
+        raise ValueError('%s is already installed; uninstall it first' % manifest['id'])
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination, symlinks=False)
+    return manifest['id']
+
+
+def _entry(extension_id, dirs):
+    for entry in scan(dirs):
+        if entry.get('id') == extension_id and not entry.get('invalid'):
+            return entry
+    raise ValueError('Unknown extension: ' + extension_id)
+
+
+def uninstall(extension_id, dirs):
+    entry = _entry(extension_id, dirs)
+    if entry['source'] != 'user':
+        raise ValueError('%s ships with the system image; it cannot be '
+                         'uninstalled per user' % extension_id)
+    shutil.rmtree(entry['path'])
+    return entry['path']
+
+
+def set_state(extension_id, dirs, disabled):
+    entry = _entry(extension_id, dirs)
+    marker = entry['path'] / '.disabled'
+    if disabled:
+        marker.touch()
+    elif marker.exists():
+        marker.unlink()
+    return entry['path']
+
+
+def manage(args, root='/'):
+    """The `dev ext list|install|uninstall|enable|disable` command."""
+    dirs = extension_dirs(root)
+    if args.action == 'list':
+        entries = scan(dirs)
+        if not entries:
+            print('No extensions installed')
+        for entry in entries:
+            print('%-26s %-8s %-26s %-8s %s'
+                  % (entry['id'], entry['version'], entry['name'][:26],
+                     'disabled' if entry['disabled'] else 'enabled',
+                     entry['source']))
+        return 0
+    if not args.target:
+        raise ValueError('dev ext %s needs an extension id or directory' % args.action)
+    if args.action == 'install':
+        print('Installed ' + install(args.target, dirs))
+    elif args.action == 'uninstall':
+        print('Uninstalled %s (%s)' % (args.target, uninstall(args.target, dirs)))
+    else:
+        set_state(args.target, dirs, args.action == 'disable')
+        print('%s is now %s' % (args.target, 'disabled' if args.action == 'disable'
+                                else 'enabled'))
+    return 0

@@ -1,10 +1,28 @@
 # Dev OS Extensions: ขยาย desktop แบบ VS Code
 
-Extension คือโฟลเดอร์ที่มี `manifest.json` + `extension.py` วางไว้ที่
+Extension คือโฟลเดอร์ที่มี `manifest.json` + `extension.py`/`extension.js` วางไว้ที่
 `~/.config/devos/extensions/` (ผู้ใช้) หรือ `/usr/share/devos/extensions/`
 (ระบบ) — shell โหลดเข้ามาตอนเปิด สิ่งที่ extension ลงทะเบียนจะปรากฏในเมนูแอป
 และถาด (tray) ของ taskbar ทันที ตัวอย่างจริงอยู่ที่ `examples/extensions/`
-(`devos.battery`, `devos.theme-switch`)
+(`devos.battery`, `devos.theme-switch`, `devos.dashboard`, `devos.hello-js`)
+
+## จัดการวงจรชีวิต
+
+```sh
+dev ext list                          # ดูทุก extension + สถานะ enabled/disabled + ที่มา
+dev ext install <โฟลเดอร์>            # ตรวจแล้วคัดลอกเข้า ~/.config/devos/extensions/
+dev ext disable <id>                  # เก็บไว้แต่ไม่โหลด (มีผลเมื่อเปิด shell ครั้งถัดไป)
+dev ext enable <id>                   # กลับมาโหลดตามปกติ
+dev ext uninstall <id>                # ลบออกจาก directory ผู้ใช้
+```
+
+- `install` ตรวจ manifest/โค้ดอย่างเคร่งครัดก่อนคัดลอกเสมอ (จำกัด ≤16 ไฟล์
+  ≤256 KiB ห้าม symlink/ไดเรกทอรีย่อย) และปฏิเสธถ้า id นั้นติดตั้งอยู่แล้ว
+- สถานะ disabled เก็บเป็นไฟล์ marker `.disabled` ในโฟลเดอร์ extension — loader
+  ข้ามตัวที่ถูก disable
+- extension ที่มากับ image (`/usr/share/devos/extensions/`) ลบแบบ per-user ไม่ได้
+  (จะบอกให้รู้) แต่ `sudo dev ext disable <id>` ทำได้เพราะ marker เขียนลงที่นั่น
+- ทุกคำสั่งมีผลกับ shell ที่เปิดใหม่ (shell ครั้งเดียวกันยังถือของเดิมไว้)
 
 ## โครงสร้าง
 

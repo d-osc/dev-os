@@ -1,8 +1,14 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
+
+DEV = [sys.executable, str(Path(__file__).parents[1] / 'tools/dev.py')]
 
 spec = importlib.util.spec_from_file_location(
     'dev_extensions', Path(__file__).parents[1] / 'tools/dev_extensions.py')
@@ -236,6 +242,119 @@ class JsProtocol(unittest.TestCase):
         with self.assertRaises(ValueError):
             session.handle_line('{"type":"widget","id":"w2","zone":"left","width":80,'
                                 '"ops":[{"op":"hexagon"}]}')
+
+
+GOOD_SOURCE_CODE = '''
+def activate(api):
+    api.register_command('devos.demo.run', 'Run demo', lambda: None)
+'''
+
+
+class Lifecycle(unittest.TestCase):
+    def write_source(self, directory, code=GOOD_SOURCE_CODE,
+                     manifest=None):
+        path = Path(directory) / 'source'
+        path.mkdir(parents=True)
+        (path / 'manifest.json').write_text(json.dumps(manifest or GOOD_MANIFEST))
+        (path / 'extension.py').write_text(code)
+        return path
+
+    def setUp(self):
+        self._previous = os.environ.get(extensions.USER_ENV)
+        self.home = tempfile.TemporaryDirectory()
+        os.environ[extensions.USER_ENV] = str(Path(self.home.name) / 'extensions')
+        self.addCleanup(self.home.cleanup)
+        if self._previous is None:
+            self.addCleanup(os.environ.pop, extensions.USER_ENV, None)
+        else:
+            self.addCleanup(os.environ.__setitem__, extensions.USER_ENV, self._previous)
+
+    def dirs(self):
+        return extensions.extension_dirs()
+
+    def test_full_lifecycle_with_the_loader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = self.write_source(directory)
+            self.assertEqual(extensions.install(source, self.dirs()), 'devos.demo')
+            entries = {entry['id']: entry for entry in extensions.scan(self.dirs())}
+            self.assertTrue(entries['devos.demo']['disabled'] is False)
+            self.assertEqual(entries['devos.demo']['source'], 'user')
+
+            host = extensions.Host(provides()).load(self.dirs())
+            self.assertEqual(host.loaded, ['devos.demo'])
+            host.unload()
+
+            extensions.set_state('devos.demo', self.dirs(), True)
+            entries = {entry['id']: entry for entry in extensions.scan(self.dirs())}
+            self.assertTrue(entries['devos.demo']['disabled'])
+            host = extensions.Host(provides()).load(self.dirs())
+            self.assertEqual(host.loaded, [])          # the loader skips disabled ones
+            host.unload()
+
+            extensions.set_state('devos.demo', self.dirs(), False)
+            host = extensions.Host(provides()).load(self.dirs())
+            self.assertEqual(host.loaded, ['devos.demo'])
+            host.unload()
+
+            extensions.uninstall('devos.demo', self.dirs())
+            self.assertEqual([entry['id'] for entry in extensions.scan(self.dirs())], [])
+            with self.assertRaises(ValueError):
+                extensions.uninstall('devos.demo', self.dirs())
+
+    def test_install_guards(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = self.write_source(directory)
+            self.assertEqual(extensions.install(source, self.dirs()), 'devos.demo')
+            with self.assertRaises(ValueError):        # already installed
+                extensions.install(source, self.dirs())
+        with tempfile.TemporaryDirectory() as directory:
+            broken = Path(directory) / 'broken'
+            broken.mkdir()
+            with self.assertRaises(ValueError):        # no manifest
+                extensions.install(broken, self.dirs())
+            nested = self.write_source(directory) / 'payload'
+            nested.mkdir()
+            with self.assertRaises(ValueError):        # subdirectory
+                extensions.install(nested.parent, self.dirs())
+
+    def test_system_extensions_cannot_be_uninstalled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            system = Path(directory) / 'system'
+            self.write_source(directory)
+            system_source = Path(directory) / 'source'
+            system.mkdir()
+            shutil.copytree(system_source, system / 'devos.demo')
+            previous = os.environ.get(extensions.USER_ENV)
+            os.environ[extensions.USER_ENV] = str(Path(directory) / 'empty-user')
+            try:
+                with self.assertRaises(ValueError) as caught:
+                    extensions.uninstall('devos.demo', [Path(directory) / 'empty-user',
+                                                        system])
+                self.assertIn('system image', str(caught.exception))
+            finally:
+                os.environ[extensions.USER_ENV] = previous
+
+    def test_cli_manages_extensions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = self.write_source(directory)
+            environment = dict(os.environ)
+            run = lambda *arguments: subprocess.run(
+                DEV + ['ext'] + list(arguments), capture_output=True, text=True,
+                env=environment)
+            self.assertIn('No extensions installed', run('list').stdout)
+            result = run('install', str(source))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('Installed devos.demo', result.stdout)
+            listing = run('list').stdout
+            self.assertIn('devos.demo', listing)
+            self.assertIn('enabled', listing)
+            self.assertEqual(run('disable', 'devos.demo').returncode, 0)
+            self.assertIn('disabled', run('list').stdout)
+            self.assertIn('now enabled', run('enable', 'devos.demo').stdout)
+            self.assertEqual(run('uninstall', 'devos.demo').returncode, 0)
+            self.assertIn('No extensions installed', run('list').stdout)
+            self.assertNotEqual(run('disable', 'devos.demo').returncode, 0)
+            self.assertNotEqual(run('disable').returncode, 0)
 
 
 if __name__ == '__main__':
