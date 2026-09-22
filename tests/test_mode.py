@@ -97,7 +97,7 @@ class BootScript(unittest.TestCase):
 
     def test_desktop_mode_boots_the_gui(self):
         log, _ = self.run_boot('desktop')
-        self.assertIn('xinit /usr/bin/dev-shell', log)
+        self.assertIn('xinit /usr/bin/dev-greeter', log)
         self.assertIn('Xorg :0 vt1', log)
 
     def test_server_mode_gives_a_console_login(self):

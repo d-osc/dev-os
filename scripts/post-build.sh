@@ -26,6 +26,7 @@ install -D -m 0644 "$project/examples/extensions/hello-js/extension.js" "$target
 install -D -m 0644 "$project/config/settings.json" "$target/etc/devos/settings.json"
 printf 'desktop\n' > "$target/etc/devos/mode"
 install -D -m 0755 "$project/scripts/devos-desktop-boot" "$target/usr/bin/devos-desktop-boot"
+install -D -m 0755 "$project/tools/dev_greeter.py" "$target/usr/bin/dev-greeter"
 # tty1 runs the desktop/server session; serial consoles keep their getty.
 sed -i '/^tty1::/d' "$target/etc/inittab"
 printf 'tty1::respawn:/usr/bin/devos-desktop-boot\n' >> "$target/etc/inittab"

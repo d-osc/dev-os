@@ -116,10 +116,14 @@ Taskbar (สูง 40px เต็มความกว้างจอ พื้�
 ระบบมีสอง mode แบบ Ubuntu Desktop กับ Ubuntu Server (`dev mode` ดูค่าปัจจุบัน /
 `sudo dev mode set server` สลับ — มีผลตั้งแต่บูตครั้งถัดไป เก็บที่ `/etc/devos/mode`):
 
-- **desktop** (ค่าเริ่มต้น) — บูตแล้วขึ้น GUI ทันที: init เรียก
-  `/usr/bin/devos-desktop-boot` บน tty1 ซึ่งรัน `xinit dev-shell` (X server บน
-  vt1) — ได้ taskbar + เมนูแอปหลังบูตโดยไม่ต้องสั่งอะไรเพิ่ม
-- **server** — ไม่มี GUI: tty1 เป็นหน้าจอ login console (`getty`) เหมือนเครื่อง
+- **desktop** (ค่าเริ่มต้น) — บูตแล้วขึ้น **หน้าจอเข้าสู่ระบบ (greeter)** ทันที: init
+  เรียก `/usr/bin/devos-desktop-boot` บน tty1 ซึ่งรัน `xinit dev-greeter` (X server
+  บน vt1) — การ์ดล็อกอินแสดงบัญชีผู้ใช้จาก /etc/passwd (uid ≥ 1000, shell ใช้ได้;
+  ถ้ามีบัญชีเดียวจะกรอกชื่อไว้ให้) รับรหัสผ่านเป็น `*` แล้วตรวจกับ /etc/shadow
+  ผ่าน libcrypt — ผ่านแล้ว **รัน dev-shell เป็นผู้ใช้คนนั้นจริง** (setuid +
+  HOME/USER/Xauthority) แต่ละบัญชีจึงมี settings/ธีม/extensions ของตัวเอง ปิด
+  session แล้วกลับมาหน้าล็อกอินรอคนถัดไป พิมพ์ผิดขึ้นข้อความแดงและล้างช่องรหัส
+- **server** — ไม่มี GUI: tty1 เป็นหน้าจอล็อกอินผ่านคอนโซล (`getty`) เหมือนเครื่อง
   headless และการเรียก dev-shell ตรง ๆ จะถูกปฏิเสธพร้อมวิธีสลับกลับ
 
 (ใน image ปัจจุบันที่ส่งมอบ ยังไม่มี X server/ฟอนต์ — เพิ่งเพิ่มเข้า configure แล้ว

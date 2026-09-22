@@ -103,6 +103,14 @@ class XButton(c.Structure):
                 ('button', c.c_uint), ('same_screen', c.c_int)]
 
 
+class XKey(c.Structure):
+    _fields_ = [('type', c.c_int), ('serial', c.c_ulong), ('send_event', c.c_int),
+                ('display', c.c_void_p), ('window', c.c_ulong), ('root', c.c_ulong),
+                ('subwindow', c.c_ulong), ('time', c.c_ulong), ('x', c.c_int), ('y', c.c_int),
+                ('x_root', c.c_int), ('y_root', c.c_int), ('state', c.c_uint),
+                ('keycode', c.c_uint), ('same_screen', c.c_int)]
+
+
 class XClient(c.Structure):
     _fields_ = [('type', c.c_int), ('serial', c.c_ulong), ('send_event', c.c_int),
                 ('display', c.c_void_p), ('window', c.c_ulong), ('message_type', c.c_ulong),
@@ -110,7 +118,8 @@ class XClient(c.Structure):
 
 
 class XEvent(c.Union):
-    _fields_ = [('any', XAny), ('button', XButton), ('client', XClient), ('pad', c.c_long * 24)]
+    _fields_ = [('any', XAny), ('button', XButton), ('key', XKey), ('client', XClient),
+                ('pad', c.c_long * 24)]
 
 
 class XImage(c.Structure):
@@ -199,6 +208,8 @@ def connect():
         'grab_pointer': bind('XGrabPointer', c.c_int, c.c_void_p, c.c_ulong, c.c_int, c.c_uint,
                              c.c_uint, c.c_uint, c.c_ulong, c.c_long),
         'ungrab_pointer': bind('XUngrabPointer', c.c_int, c.c_void_p, c.c_long),
+        'lookup_string': bind('XLookupString', c.c_int, c.c_void_p, c.c_char_p, c.c_int,
+                              c.POINTER(c.c_ulong), c.c_void_p),
     }
     x.XSetErrorHandler.argtypes = [c.c_void_p]
     x.XSetErrorHandler.restype = c.c_int
@@ -419,6 +430,73 @@ class Label:
 
     def draw(self, tk, cr):
         tk.text(cr, self.text, self.x, self.y, self.color, self.size, self.bold)
+
+
+KEYSYM_RETURN, KEYSYM_BACKSPACE, KEYSYM_ESCAPE = 0xFF0D, 0xFF08, 0xFF1B
+
+
+class Entry:
+    """A single-line text field with focus, masking and keyboard feeding.
+
+    feed(keysym, char) takes one KeyPress (as XLookupString reports it) and
+    returns None, 'submit' for Enter or 'clear' for Escape; the rest of the
+    entry state — text, caret, mask — is plain data for unit tests.
+    """
+
+    LIMIT = 64
+
+    def __init__(self, x, y, width, height, label='', placeholder='', masked=False):
+        self.rect = (x, y, width, height)
+        self.label, self.placeholder, self.masked = label, placeholder, masked
+        self.text, self.focused = '', False
+
+    def hit(self, x, y):
+        return rect_hit(x, y, *self.rect)
+
+    def feed(self, keysym, char):
+        if keysym == KEYSYM_RETURN:
+            return 'submit'
+        if keysym == KEYSYM_ESCAPE:
+            self.text = ''
+            return 'clear'
+        if keysym == KEYSYM_BACKSPACE:
+            self.text = self.text[:-1]
+            return None
+        if char and 32 <= ord(char) < 127 and len(self.text) < self.LIMIT:
+            self.text += char
+        return None
+
+    def display_text(self):
+        if self.masked:
+            return '*' * len(self.text)
+        return self.text or self.placeholder
+
+    def draw(self, tk, cr):
+        left, top, width, height = self.rect
+        cairo = tk.cairo
+        if self.label:
+            tk.text(cr, self.label, left, top - 6, PALETTE['dim'], 10.0, True)
+        radius = dev_theme.corner_radius(CORNERS, 'button', width, height)
+        cairo.set_rgba(cr, *PALETTE['bg'], 1.0)
+        cairo.rounded(cr, left, top, width, height, radius)
+        cairo.fill(cr)
+        border = PALETTE['accent'] if self.focused else PALETTE['line']
+        cairo.set_rgba(cr, *border, 1.0)
+        cairo.set_line_width(cr, 1.2)
+        cairo.rounded(cr, left + 0.6, top + 0.6, width - 1.2, height - 1.2,
+                      max(0.0, radius - 0.6))
+        cairo.stroke(cr)
+        shown = self.display_text()
+        color = PALETTE['text'] if self.text or not self.placeholder else PALETTE['dim']
+        tk.text(cr, shown, left + 12, top + height / 2 + 4.5, color, 13.0)
+        if self.focused:
+            caret = left + 14 + tk.text_width(cr, shown, 13.0)
+            cairo.set_rgba(cr, *PALETTE['accent'], 1.0)
+            cairo.set_line_width(cr, 1.4)
+            cairo.new_sub_path(cr)
+            cairo.move_to(cr, caret, top + 7)
+            cairo.line_to(cr, caret, top + height - 7)
+            cairo.stroke(cr)
 
 
 class Window:

@@ -11,7 +11,7 @@ if [ -f "$mode_file" ]; then
 fi
 case "$mode" in
     desktop)
-        exec xinit /usr/bin/dev-shell -- /usr/bin/Xorg :0 vt1
+        exec xinit /usr/bin/dev-greeter -- /usr/bin/Xorg :0 vt1
         ;;
     server|*)
         if [ "$mode" != server ]; then
