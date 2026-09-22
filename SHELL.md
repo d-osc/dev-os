@@ -113,10 +113,17 @@ Taskbar (สูง 40px เต็มความกว้างจอ พื้�
 
 ## ใช้งาน
 
-Shell ทำงานเฉพาะ **desktop mode** — ระบบมี mode อยู่สองค่า (`desktop` เป็น
-ค่าเริ่มต้น / `server`) ตั้งด้วย `sudo dev mode set server` เก็บที่
-`/etc/devos/mode` — ถ้า mode เป็น `server` การเรียก dev-shell จะจบทันทีพร้อม
-ข้อความบอกวิธีสลับกลับ (โหมด headless สำหรับเครื่องที่ไม่ใช้ desktop)
+ระบบมีสอง mode แบบ Ubuntu Desktop กับ Ubuntu Server (`dev mode` ดูค่าปัจจุบัน /
+`sudo dev mode set server` สลับ — มีผลตั้งแต่บูตครั้งถัดไป เก็บที่ `/etc/devos/mode`):
+
+- **desktop** (ค่าเริ่มต้น) — บูตแล้วขึ้น GUI ทันที: init เรียก
+  `/usr/bin/devos-desktop-boot` บน tty1 ซึ่งรัน `xinit dev-shell` (X server บน
+  vt1) — ได้ taskbar + เมนูแอปหลังบูตโดยไม่ต้องสั่งอะไรเพิ่ม
+- **server** — ไม่มี GUI: tty1 เป็นหน้าจอ login console (`getty`) เหมือนเครื่อง
+  headless และการเรียก dev-shell ตรง ๆ จะถูกปฏิเสธพร้อมวิธีสลับกลับ
+
+(ใน image ปัจจุบันที่ส่งมอบ ยังไม่มี X server/ฟอนต์ — เพิ่งเพิ่มเข้า configure แล้ว
+รอ rebuild; จนกว่าจะ rebuild dev-shell ยังต้องเรียกเองใน X session เช่น WSLg)
 
 ต้องอยู่ใน X11 session แล้วเท่านั้น (ยังไม่มี session เริ่มอัตโนมัติใน ISO) และระบบต้องมี
 `libcairo.so.2`, `fontconfig` กับฟอนต์ TTF (Buildroot: `libcairo`, `fontconfig`,

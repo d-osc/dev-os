@@ -29,6 +29,14 @@ BR2_PACKAGE_DOSFSTOOLS=y
 BR2_PACKAGE_DOSFSTOOLS_MKFS_FAT=y
 BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y
 BR2_PACKAGE_E2FSPROGS=y
+# Desktop stack: the default desktop mode boots X with dev-shell on tty1,
+# so the GUI libraries, fonts and the X server belong in the main config.
+BR2_PACKAGE_LIBCAIRO=y
+BR2_PACKAGE_FONTCONFIG=y
+BR2_PACKAGE_DEJAVU=y
+BR2_PACKAGE_DEJAVU_SANS=y
+BR2_PACKAGE_XSERVER_XORG_SERVER=y
+BR2_PACKAGE_XAPP_XINIT=y
 BR2_TARGET_GRUB2=y
 BR2_TARGET_GRUB2_X86_64_EFI=y
 BR2_TARGET_GRUB2_INSTALL_TOOLS=y
@@ -55,6 +63,14 @@ if [ "${DEVOS_WITH_RUST:-0}" = 1 ]; then
     printf '\nBR2_PACKAGE_RUST=y\n' >> "$out/.config"
 fi
 make -C "$br" O="$out" olddefconfig
+for symbol in BR2_PACKAGE_LIBCAIRO BR2_PACKAGE_FONTCONFIG BR2_PACKAGE_DEJAVU \
+             BR2_PACKAGE_DEJAVU_SANS BR2_PACKAGE_XSERVER_XORG_SERVER \
+             BR2_PACKAGE_XAPP_XINIT; do
+    grep -qx "$symbol=y" "$out/.config" || {
+        echo "Desktop symbol $symbol was not selected by Buildroot" >&2
+        exit 1
+    }
+done
 if [ "${DEVOS_WITH_NODE:-0}" = 1 ]; then
     grep -qx 'BR2_TOOLCHAIN_BUILDROOT_CXX=y' "$out/.config" &&
     grep -qx 'BR2_PACKAGE_NODEJS=y' "$out/.config" || {

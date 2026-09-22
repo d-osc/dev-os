@@ -1139,7 +1139,7 @@ def main():
                 require(args.action == 'set', 'Usage: dev mode [set desktop|server]')
                 require(args.value is not None, 'Usage: dev mode set desktop|server')
                 dev_settings.write_mode(root, args.value)
-                print('Mode set to ' + args.value)
+                print('Mode set to ' + args.value + ' (takes effect at next boot)')
         elif args.command == 'build':
             build(args.source, args.output)
         elif args.command == 'install':

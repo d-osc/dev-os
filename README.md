@@ -61,10 +61,11 @@ su -
 
 `dev install` คล้าย `apt install` แต่รุ่นนี้รับไฟล์ local เท่านั้น ส่วน `su` และ `sudo` ใช้กลไก Linux ตามปกติ ไม่ใช่คำสั่งจำลองของตัวจัดการแพ็กเกจ `.dpk` เป็นนามสกุลแพ็กเกจ ไม่ได้บังคับให้ไฟล์เอกสารหรือโปรแกรมทั้งหมดใน OS ใช้นามสกุลนี้
 
-ระบบมี **mode** สองค่า: `desktop` (ค่าเริ่มต้น — desktop shell ใช้ได้) และ
-`server` (headless — dev-shell ปฏิเสธการทำงาน) ดูค่าปัจจุบันด้วย `dev mode`
-และสลับด้วย `sudo dev mode set server` / `sudo dev mode set desktop`
-(เก็บที่ `/etc/devos/mode`)
+ระบบมี **mode** สองค่าแบบ Ubuntu Desktop/Server: `desktop` (ค่าเริ่มต้น — บูตขึ้น
+GUI: X + desktop shell บน tty1 อัตโนมัติ) และ `server` (headless — tty1 เป็นหน้าจอ
+login console และ dev-shell ปฏิเสธการทำงาน) ดูค่าปัจจุบันด้วย `dev mode` และสลับ
+ด้วย `sudo dev mode set server` / `sudo dev mode set desktop` (เก็บที่
+`/etc/devos/mode` มีผลตั้งแต่บูตครั้งถัดไป) — พฤติกรรมบูตนี้อยู่ใน rebuild ครั้งถัดไป
 
 ## Build บน Linux / WSL2
 

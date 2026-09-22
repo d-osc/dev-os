@@ -25,6 +25,10 @@ install -D -m 0644 "$project/examples/extensions/hello-js/manifest.json" "$targe
 install -D -m 0644 "$project/examples/extensions/hello-js/extension.js" "$target/usr/share/devos/extensions/devos.hello-js/extension.js"
 install -D -m 0644 "$project/config/settings.json" "$target/etc/devos/settings.json"
 printf 'desktop\n' > "$target/etc/devos/mode"
+install -D -m 0755 "$project/scripts/devos-desktop-boot" "$target/usr/bin/devos-desktop-boot"
+# tty1 runs the desktop/server session; serial consoles keep their getty.
+sed -i '/^tty1::/d' "$target/etc/inittab"
+printf 'tty1::respawn:/usr/bin/devos-desktop-boot\n' >> "$target/etc/inittab"
 install -D -m 0644 "$project/examples/extensions/battery/manifest.json" "$target/usr/share/devos/extensions/devos.battery/manifest.json"
 install -D -m 0644 "$project/examples/extensions/battery/extension.py" "$target/usr/share/devos/extensions/devos.battery/extension.py"
 install -D -m 0644 "$project/examples/extensions/theme-switch/manifest.json" "$target/usr/share/devos/extensions/devos.theme-switch/manifest.json"

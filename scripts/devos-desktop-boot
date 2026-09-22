@@ -1,0 +1,22 @@
+#!/bin/sh
+# Dev OS tty1 session: desktop mode boots the GUI (X + dev-shell), server
+# mode gives a console login like a headless server. Started by init as
+# `tty1::respawn:/usr/bin/devos-desktop-boot`; the mode applies at boot
+# (`dev mode set ...` changes it from the next boot).
+set -eu
+mode_file=${DEVOS_MODE_FILE:-/etc/devos/mode}
+mode=desktop
+if [ -f "$mode_file" ]; then
+    mode=$(cat "$mode_file")
+fi
+case "$mode" in
+    desktop)
+        exec xinit /usr/bin/dev-shell -- /usr/bin/Xorg :0 vt1
+        ;;
+    server|*)
+        if [ "$mode" != server ]; then
+            echo "devos-desktop-boot: invalid mode '$mode'; run: dev mode set desktop" >&2
+        fi
+        exec getty -L tty1 115200 linux
+        ;;
+esac
