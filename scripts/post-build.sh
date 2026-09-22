@@ -24,6 +24,7 @@ install -D -m 0644 "$project/tools/ext-runner.js" "$target/usr/lib/devos/ext-run
 install -D -m 0644 "$project/examples/extensions/hello-js/manifest.json" "$target/usr/share/devos/extensions/devos.hello-js/manifest.json"
 install -D -m 0644 "$project/examples/extensions/hello-js/extension.js" "$target/usr/share/devos/extensions/devos.hello-js/extension.js"
 install -D -m 0644 "$project/config/settings.json" "$target/etc/devos/settings.json"
+printf 'desktop\n' > "$target/etc/devos/mode"
 install -D -m 0644 "$project/examples/extensions/battery/manifest.json" "$target/usr/share/devos/extensions/devos.battery/manifest.json"
 install -D -m 0644 "$project/examples/extensions/battery/extension.py" "$target/usr/share/devos/extensions/devos.battery/extension.py"
 install -D -m 0644 "$project/examples/extensions/theme-switch/manifest.json" "$target/usr/share/devos/extensions/devos.theme-switch/manifest.json"

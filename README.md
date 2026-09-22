@@ -61,6 +61,11 @@ su -
 
 `dev install` คล้าย `apt install` แต่รุ่นนี้รับไฟล์ local เท่านั้น ส่วน `su` และ `sudo` ใช้กลไก Linux ตามปกติ ไม่ใช่คำสั่งจำลองของตัวจัดการแพ็กเกจ `.dpk` เป็นนามสกุลแพ็กเกจ ไม่ได้บังคับให้ไฟล์เอกสารหรือโปรแกรมทั้งหมดใน OS ใช้นามสกุลนี้
 
+ระบบมี **mode** สองค่า: `desktop` (ค่าเริ่มต้น — desktop shell ใช้ได้) และ
+`server` (headless — dev-shell ปฏิเสธการทำงาน) ดูค่าปัจจุบันด้วย `dev mode`
+และสลับด้วย `sudo dev mode set server` / `sudo dev mode set desktop`
+(เก็บที่ `/etc/devos/mode`)
+
 ## Build บน Linux / WSL2
 
 ใช้ Buildroot **2026.08** จาก [เว็บไซต์ทางการ](https://buildroot.org/download.html) และตรวจ checksum/signature ของ source ก่อนใช้ ต้องเตรียม dependencies ตาม [Buildroot manual](https://buildroot.org/downloads/manual/manual.html#requirement-mandatory)

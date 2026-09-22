@@ -9,12 +9,14 @@ for the built-in look. Like theme files, settings are untrusted input:
 size-capped and strictly validated.
 """
 import json
+import os
 from pathlib import Path
 
 LIMIT = 16384
 SYSTEM = Path('/etc/devos/settings.json')
 USER = Path.home() / '.config/devos/settings.json'
 THEME_DIRS = (Path('themes'), Path('/usr/share/devos/themes'))
+MODES = ('desktop', 'server')
 
 DEFAULTS = {'theme': 'dev-dark', 'clock.hour12': False, 'clock.showSeconds': True,
             'clock.dateFormat': '%b %d, %Y', 'font.family': 'DejaVu Sans'}
@@ -85,3 +87,31 @@ def theme_path(value, dirs=THEME_DIRS):
         if found.is_file():
             return found
     raise ValueError('Unknown theme name: ' + value)
+
+
+# ------------------------------------------------------------- system mode
+
+def mode_path(root):
+    return Path(root) / 'etc/devos/mode'
+
+
+def read_mode(root):
+    """The system mode; 'desktop' when the mode file is absent."""
+    path = mode_path(root)
+    if not path.is_file():
+        return 'desktop'
+    mode = path.read_text().strip()
+    if mode not in MODES:
+        raise ValueError('Invalid system mode in %s: %s' % (path, mode[:32]))
+    return mode
+
+
+def write_mode(root, mode):
+    """Set the system mode; the file is replaced atomically."""
+    if mode not in MODES:
+        raise ValueError('Mode must be desktop or server')
+    path = mode_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name('.mode.tmp')
+    temporary.write_text(mode + '\n')
+    os.replace(temporary, path)

@@ -251,6 +251,13 @@ def property_windows(x, api, display, root, name):
         x.XFree(data.value)
 
 
+def mode_error(mode):
+    """None when the shell may run in this system mode, else a message."""
+    return None if mode == 'desktop' else \
+        'dev-shell runs in desktop mode only (current: %s); ' \
+        'use `dev mode set desktop` to switch' % mode
+
+
 def theme_from(path, settings=None, settings_dir=None):
     """--theme flag > DEVOS_THEME > the settings file > built-in default."""
     source = path or os.environ.get('DEVOS_THEME')
@@ -269,6 +276,9 @@ def theme_from(path, settings=None, settings_dir=None):
 def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=None,
         extension_dirs=None):
     settings = settings or {}
+    problem = mode_error(dev_settings.read_mode(root))
+    if problem:
+        raise SystemExit(problem)
     if theme is None:
         theme, theme_source = dev_gui.DEFAULT_THEME, None
     apply_theme(theme)

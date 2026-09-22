@@ -113,6 +113,11 @@ Taskbar (สูง 40px เต็มความกว้างจอ พื้�
 
 ## ใช้งาน
 
+Shell ทำงานเฉพาะ **desktop mode** — ระบบมี mode อยู่สองค่า (`desktop` เป็น
+ค่าเริ่มต้น / `server`) ตั้งด้วย `sudo dev mode set server` เก็บที่
+`/etc/devos/mode` — ถ้า mode เป็น `server` การเรียก dev-shell จะจบทันทีพร้อม
+ข้อความบอกวิธีสลับกลับ (โหมด headless สำหรับเครื่องที่ไม่ใช้ desktop)
+
 ต้องอยู่ใน X11 session แล้วเท่านั้น (ยังไม่มี session เริ่มอัตโนมัติใน ISO) และระบบต้องมี
 `libcairo.so.2`, `fontconfig` กับฟอนต์ TTF (Buildroot: `libcairo`, `fontconfig`,
 `dejavu-fonts`) — WSLg ของตัวทดสอบมีครบโดยไม่ต้องติดตั้งเพิ่ม:
