@@ -279,6 +279,24 @@ def network_state(command='ip'):
     return 'offline', 'no address'
 
 
+def password_ok(password, sudo='sudo'):
+    """Verify against the real account via sudo -S; never reads shadow."""
+    if not password:
+        return False
+    try:
+        result = subprocess.run([sudo, '-S', '-k', '-u', 'root', 'true'],
+                                input=(password + chr(10)).encode(),
+                                capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def lock_layout(width, height):
+    """Geometry of the lock card: centered, matching the greeter's look."""
+    return (width - 380) // 2, (height - 200) // 2, 380, 200
+
+
 def mode_error(mode):
     """None when the shell may run in this system mode, else a message."""
     return None if mode == 'desktop' else \
@@ -387,6 +405,19 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                                                default_visual, width, height)
         desktop_cr = cairo.create(desktop_surface)
 
+    lock_attributes = dev_gui.SetWindowAttributes(
+        border_pixel=0, override_redirect=1,
+        event_mask=(1 << 0) | (1 << 2) | (1 << 6))
+    lock_window = api['create_window'](display, root_window, 0, 0, width, height,
+                                       0, 0, 1, default_visual,
+                                       (1 << 0) | (1 << 2) | (1 << 6) | (1 << 9) | (1 << 11) | (1 << 17),
+                                       c.byref(lock_attributes))
+    api['store_name'](display, lock_window, b'Dev OS Lock')
+    lock_surface = cairo.surface_create(display, lock_window, default_visual,
+                                        width, height)
+    lock_cr = cairo.create(lock_surface)
+    lock_mapped = [False]
+
     bar_surface = cairo.surface_create(display, bar, default_visual, width, BAR_HEIGHT)
     cr_bar = cairo.create(bar_surface)
     menu_surface = [None]
@@ -451,6 +482,9 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             system_apps.append({'kind': 'app', 'name': program, 'label': label,
                                 'comment': 'system application', 'categories': ['System'],
                                 'permissions': []})
+    system_apps.append({'kind': 'lock', 'name': 'lock', 'label': 'Lock',
+                        'comment': 'lock this session', 'categories': ['System'],
+                        'permissions': []})
     entries = apps + system_apps + (host.command_entries() if host else [])
     consent = None
     menu_open = False
@@ -463,6 +497,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     panel_state = {}
     toasts = []
     toast_fifo = None
+    locked = [bool(os.environ.get('DEVOS_LOCK'))]
+    lock_input = ['']
 
     def hidden(section):
         return bool(host and section in host.hidden)
@@ -516,6 +552,40 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         else:
             api['ungrab_pointer'](display, 0)
             api['unmap'](display, menu)
+
+    def draw_lock():
+        cairo.set_rgba(lock_cr, *DESIGN['bg'], 1.0)
+        cairo.paint(lock_cr)
+        lx, ly, lw, lh = lock_layout(width, height)
+        radius = dev_theme.corner_radius(dev_gui.CORNERS, 'window', lw, lh)
+        cairo.set_rgba(lock_cr, *PALETTE['panel'], 1.0)
+        cairo.rounded(lock_cr, lx, ly, lw, lh, radius)
+        cairo.fill(lock_cr)
+        cairo.set_rgba(lock_cr, *ACCENT, 0.35)
+        cairo.set_line_width(lock_cr, 1)
+        cairo.rounded(lock_cr, lx + 0.5, ly + 0.5, lw - 1, lh - 1, radius)
+        cairo.stroke(lock_cr)
+        dev_theme.draw_icon(cairo, lock_cr, dev_gui.ICONS['mark'], lx + 36, ly + 28,
+                            DESIGN['green'], dev_gui.THEME_COLORS, 1.5)
+        text(lock_cr, 'Locked', lx + 64, ly + 48, DESIGN['white'], 18.0, True)
+        text(lock_cr, 'Enter your password to unlock', lx + 36, ly + 78,
+             DESIGN['gray'], 11.0)
+        entry_y = ly + 104
+        cairo.set_rgba(lock_cr, *PALETTE['bg'], 1.0)
+        cairo.rounded(lock_cr, lx + 32, entry_y, lw - 64, 36,
+                      dev_theme.corner_radius(dev_gui.CORNERS, 'button', lw - 64, 36))
+        cairo.fill(lock_cr)
+        cairo.set_rgba(lock_cr, *ACCENT, 1.0)
+        cairo.set_line_width(lock_cr, 1.2)
+        cairo.rounded(lock_cr, lx + 32.6, entry_y + 0.6, lw - 65, 35,
+                      max(0.0, dev_theme.corner_radius(dev_gui.CORNERS, 'button',
+                                                        lw - 64, 36) - 0.6))
+        cairo.stroke(lock_cr)
+        shown = '*' * len(lock_input[0]) or 'password'
+        text(lock_cr, shown, lx + 44, entry_y + 23,
+             DESIGN['white'] if lock_input[0] else DESIGN['gray'], 13.0)
+        cairo.surface_flush(lock_surface)
+        api['flush'](display)
 
     def draw_bar():
         nonlocal clock
@@ -868,6 +938,16 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         geometry = menu_geometry(width, height, len(entries), consent is not None)
         if desktop_window:
             paint_desktop()
+        if locked[0] and not lock_mapped[0]:
+            api['map'](display, lock_window)
+            api['raise_window'](display, lock_window)
+            api['set_input_focus'](display, lock_window, 1, 0)
+            lock_mapped[0] = True
+        elif not locked[0] and lock_mapped[0]:
+            api['unmap'](display, lock_window)
+            lock_mapped[0] = False
+        if locked[0]:
+            draw_lock()
         api['raise_window'](display, bar)     # chrome above WM-managed windows
         tasks = draw_bar()
         if menu_open:
@@ -879,10 +959,29 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             if (kind == 33 and event.client.message_type == protocols
                     and event.client.data[0] == delete):
                 running = False
+            elif kind == 2 and locked[0] and event.key.window in (bar, lock_window):
+                keysym = c.c_ulong()
+                buffer = c.create_string_buffer(16)
+                api['lookup_string'](c.byref(event.key), buffer, 16,
+                                     c.byref(keysym), None)
+                char = buffer.value.decode('ascii', 'ignore')[:1]
+                symbol = keysym.value
+                if symbol == 0xFF0D:                     # Return: verify via sudo
+                    if password_ok(lock_input[0]):
+                        locked[0] = False
+                    lock_input[0] = ''
+                elif symbol == 0xFF1B:                    # Escape clears
+                    lock_input[0] = ''
+                elif symbol == 0xFF08:
+                    lock_input[0] = lock_input[0][:-1]
+                elif char and 32 <= ord(char) < 127 and len(lock_input[0]) < 64:
+                    lock_input[0] += char
+            elif kind in (4, 5, 6) and locked[0]                     and event.button.window in (bar, lock_window):
+                continue                                  # clicks are dead while locked
             elif kind in (4, 5, 6) and event.button.window == bar:
                 position = event.button
                 tray_count = len(host.tray) if host else 0
-                if kind == 6:
+                if kind == 6 and not locked[0]:
                     hover[0] = hover_key('bar', position.x, position.y, width=width,
                                          app_count=len(pinned), tray_right=tray_right[0],
                                          tray_count=tray_count)
@@ -961,6 +1060,11 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                         draw_menu(menu_geometry(width, height, len(items), False))
                     elif index is not None and index >= 0 and not consent:
                         entry = entries[index]
+                        if entry.get('kind') == 'lock':
+                            locked[0] = True
+                            lock_input[0] = ''
+                            open_menu(False)
+                            continue
                         if entry.get('kind') == 'app' and entry['name'].startswith('/usr/bin/'):
                             try:                      # trusted system apps launch
                                 subprocess.Popen([entry['name']], env=os.environ,  # directly
@@ -999,6 +1103,11 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             api['sync'](display, 0)
             draw_menu(geometry)
             api['sync'](display, 0)
+            if locked[0]:
+                screenshot(x, api, display, lock_window,
+                           shots[0].rsplit('-bar', 1)[0] + '-lock.png', width, height)
+                running = False
+                continue
             screenshot(x, api, display, menu, shots[1], geometry['width'], geometry['height'])
             if desktop_window:
                 screenshot(x, api, display, desktop_window,

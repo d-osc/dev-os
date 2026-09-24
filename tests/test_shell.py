@@ -82,6 +82,34 @@ class NetworkState(unittest.TestCase):
                          ('offline', 'no network tool'))
 
 
+class LockScreen(unittest.TestCase):
+    def test_layout_is_centered(self):
+        x, y, width, height = shell.lock_layout(1280, 800)
+        self.assertEqual((width, height), (380, 200))
+        self.assertEqual(x, (1280 - 380) // 2)
+        self.assertEqual(y, (800 - 200) // 2)
+
+    @unittest.skipIf(os.name != 'posix', 'fake sudo needs POSIX')
+    def test_password_ok_delegates_to_sudo(self):
+        from pathlib import Path as _Path
+        import tempfile as _tempfile
+        with _tempfile.TemporaryDirectory() as directory:
+            sudo = _Path(directory) / 'sudo'
+            lines = ['#!/bin/sh', 'cat > /dev/null', '[ "$#" -ge 3 ] && exit 0',
+                     'exit 1']
+            sudo.write_text(chr(10).join(lines) + chr(10))
+            sudo.chmod(0o755)
+            self.assertTrue(shell.password_ok('right', str(sudo)))
+            reject = _Path(directory) / 'reject'
+            reject.write_text('#!/bin/sh' + chr(10) + 'cat > /dev/null' + chr(10)
+                              + 'exit 1' + chr(10))
+            reject.chmod(0o755)
+            self.assertFalse(shell.password_ok('wrong', str(reject)))
+
+    def test_empty_password_is_never_ok(self):
+        self.assertFalse(shell.password_ok(''))
+
+
 class Layout(unittest.TestCase):
     def test_clock_text_shape(self):
         import re as regex
