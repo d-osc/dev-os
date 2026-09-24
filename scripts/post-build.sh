@@ -28,6 +28,9 @@ install -D -m 0644 "$project/config/settings.json" "$target/etc/devos/settings.j
 printf 'desktop\n' > "$target/etc/devos/mode"
 install -D -m 0755 "$project/scripts/devos-desktop-boot" "$target/usr/bin/devos-desktop-boot"
 install -D -m 0755 "$project/tools/dev_greeter.py" "$target/usr/bin/dev-greeter"
+install -D -m 0755 "$project/scripts/devos-session" "$target/usr/bin/devos-session"
+install -D -m 0755 "$project/tools/dev_files.py" "$target/usr/bin/dev-files"
+install -D -m 0755 "$project/scripts/dev-notify" "$target/usr/bin/dev-notify"
 # The xorg-server package ships S40xorg, which pre-starts "Xorg :0.0" at
 # boot; the desktop session must own the server instead (xinit per tty1),
 # otherwise xinit collides with the already-active display and respawns.

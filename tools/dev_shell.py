@@ -239,16 +239,30 @@ def property_windows(x, api, display, root, name):
     atom = api['atom'](display, name.encode(), 1)
     if not atom:
         return []
-    actual, format_, count, data = c.c_ulong(), c.c_int(), c.c_ulong(), c.c_void_p()
-    result = api['get_property'](display, root, atom, 0, 0, 1024, 0,
-                                 None, c.byref(actual), c.byref(format_),
-                                 c.byref(count), c.byref(data))
+    actual, format_, count, remaining, data = (c.c_ulong(), c.c_int(), c.c_ulong(),
+                                                c.c_ulong(), c.c_void_p())
+    result = api['get_property'](display, root, atom, 0, 1024, 0, 0,
+                                 c.byref(actual), c.byref(format_), c.byref(count),
+                                 c.byref(remaining), c.byref(data))
     if result != 0 or not count.value or format_.value != 32:
         return []
     try:
         return list((c.c_ulong * count.value).from_address(data.value))
     finally:
         x.XFree(data.value)
+
+
+def toast_layout(messages, now, width, height):
+    """(x, y, title, body, alpha) for each live toast, top-right stacked."""
+    cards = []
+    for order, message in enumerate(messages):
+        age = now - message['at']
+        if age > 5.0:
+            continue
+        alpha = 1.0 if age < 4.0 else max(0.15, 1.0 - (age - 4.0))
+        y = 12 + order * 74
+        cards.append((width - 296, y, message['title'], message['body'], alpha))
+    return cards
 
 
 def mode_error(mode):
@@ -343,6 +357,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         desktop_window = api['create'](display, root_window, 0, 0, width, height,
                                        1, 0x0b0f16, 0x0b0f16)
         api['store_name'](display, desktop_window, b'Dev OS Desktop')
+        set_atoms(desktop_window, '_NET_WM_WINDOW_TYPE', ['_NET_WM_WINDOW_TYPE_DESKTOP'])
         desktop_surface = cairo.surface_create(display, desktop_window,
                                                default_visual, width, height)
         desktop_cr = cairo.create(desktop_surface)
@@ -405,7 +420,13 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         for broken in host.report:
             print('extension %s failed: %s' % (broken['id'], broken['error']),
                   file=sys.stderr)
-    entries = apps + (host.command_entries() if host else [])
+    system_apps = []
+    for label, program in (('Terminal', '/usr/bin/xterm'), ('Files', '/usr/bin/dev-files')):
+        if Path(program).is_file():
+            system_apps.append({'kind': 'app', 'name': program, 'label': label,
+                                'comment': 'system application', 'categories': ['System'],
+                                'permissions': []})
+    entries = apps + system_apps + (host.command_entries() if host else [])
     consent = None
     menu_open = False
     clock = ''
@@ -415,6 +436,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     widget_end = [0]
     warned = set()
     panel_state = {}
+    toasts = []
+    toast_fifo = None
 
     def hidden(section):
         return bool(host and section in host.hidden)
@@ -447,7 +470,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             if window not in (bar, menu) and api['fetch_name'](display, window, c.byref(name)) \
                     and name.value:
                 found.append((name.value.decode('utf-8', 'replace'), window))
-                x.XFree(name.value)
+                x.XFree(name)          # free the pointer X gave, not a bytes copy
         return found
 
     def place_menu():
@@ -621,6 +644,18 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 cursor += fitted + dev_extensions.ZONE_GAP
             if dropped:
                 overflow_marker(cursor + 4)
+        for x, y, title, body, alpha in toast_layout(toasts, time.monotonic(), width, height):
+            cairo.set_rgba(cr_bar, *PALETTE['chrome'], min(alpha, 0.96))
+            cairo.rounded(cr_bar, x, y, 284, 64, 10)
+            cairo.fill(cr_bar)
+            cairo.set_rgba(cr_bar, *ACCENT, min(alpha, 0.9))
+            cairo.set_line_width(cr_bar, 1)
+            cairo.rounded(cr_bar, x + 0.5, y + 0.5, 283, 63, 10)
+            cairo.stroke(cr_bar)
+            if title:
+                text(cr_bar, title, x + 14, y + 24, DESIGN['white'], 12.0, True, alpha=alpha)
+            if body:
+                text(cr_bar, body, x + 14, y + 44, DESIGN['gray'], 10.5, alpha=alpha)
         cairo.surface_flush(bar_surface)
         api['flush'](display)
         return tasks
@@ -756,6 +791,16 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
 
     api['select_input'](display, bar, (1 << 15) | (1 << 2) | (1 << 3) | (1 << 6))
     api['select_input'](display, menu, (1 << 15) | (1 << 2) | (1 << 6))
+    try:
+        fifo_path = '/tmp/devos-notifications-%d' % os.getuid()
+        os.mkfifo(fifo_path, 0o644)
+    except FileExistsError:
+        pass
+    try:
+        toast_fifo = os.open(fifo_path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        toast_fifo = None
+
     api['select_input'](display, root_window, 1 << 18)
     if desktop_window:
         api['map'](display, desktop_window)
@@ -771,10 +816,27 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
 
     api['map'](display, bar)
     api['raise_window'](display, bar)          # no WM: map order is not z-order
+    api['move'](display, bar, 0, height - BAR_HEIGHT)  # openbox docks float otherwise
     running = True
     started = time.monotonic()
     captured = shots is None
     while running:
+        now = time.monotonic()
+        if toast_fifo is not None:
+            try:
+                for line in os.read(toast_fifo, 8192).decode('utf-8', 'replace').splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        note = json.loads(line)
+                        toasts.append({'title': str(note.get('title', ''))[:40],
+                                       'body': str(note.get('body', ''))[:80],
+                                       'at': now})
+                    except ValueError:
+                        toasts.append({'title': line[:40], 'body': '', 'at': now})
+            except BlockingIOError:
+                pass
+            toasts[:] = toasts[-4:]
         geometry = menu_geometry(width, height, len(entries), consent is not None)
         if desktop_window:
             paint_desktop()
@@ -869,13 +931,25 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                         consent = None
                         draw_menu(menu_geometry(width, height, len(items), False))
                     elif index is not None and index >= 0 and not consent:
-                        if entries[index].get('kind') == 'command' and host:
+                        entry = entries[index]
+                        if entry.get('kind') == 'app' and entry['name'].startswith('/usr/bin/'):
+                            try:                      # trusted system apps launch
+                                subprocess.Popen([entry['name']], env=os.environ,  # directly
+                                                 start_new_session=True,
+                                                 stdout=subprocess.DEVNULL,
+                                                 stderr=subprocess.DEVNULL)
+                            except OSError as error:
+                                print('launch %s failed: %s' % (entry['name'], error),
+                                      file=sys.stderr)
+                            open_menu(False)
+                            continue
+                        if entry.get('kind') == 'command' and host:
                             try:
                                 host.run_command(entries[index]['name'])
                             except Exception as error:
                                 print('command %s failed: %s'
                                       % (entries[index]['name'], error), file=sys.stderr)
-                        else:
+                        elif entries[index].get('kind') != 'app':
                             consent = entries[index]
                             draw_menu(menu_geometry(width, height, len(entries), True))
         if not captured and time.monotonic() - started >= 1.0:

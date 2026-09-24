@@ -32,6 +32,7 @@
 | `clock.dateFormat` | `%b %d, %Y` | รูปแบบบรรทัดวันที่ (strftime, แสดงตัวพิมพ์ใหญ่) |
 | `font.family` | `DejaVu Sans` | ฟอนต์ของ shell และแอป (ต้องเป็นฟอนต์ที่ fontconfig เห็น) |
 | `desktop.background` | `none` | พื้นหลัง desktop + หน้า login: `none` (สีธีม), `#RRGGBB`, หรือพาธไฟล์ `.png` `.jpg/.jpeg` `.svg` `.html` |
+| `input.thai` | `false` | `true` = พิมพ์ภาษาไทย (เค้า Kedmanee บนแป้น US) ในช่องกรอกของ greeter/แอป |
 
 ลำดับการเลือกธีมเมื่อรัน: ธง `--theme` > ตัวแปร `DEVOS_THEME` >
 คีย์ `theme` ใน settings > built-in

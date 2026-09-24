@@ -167,7 +167,7 @@ def authenticate(name, password, shadow_text=None):
     return False
 
 
-def spawn_session(name, command=('/usr/bin/dev-shell',)):
+def spawn_session(name, command=('/usr/bin/devos-session',)):
     """Start the session process as the signed-in user; (pid, authority)."""
     import pwd
     record = pwd.getpwnam(name)

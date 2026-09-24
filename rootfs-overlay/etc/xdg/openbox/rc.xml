@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <resistance>
+    <strength>10</strength>
+    <screen_edge_strength>20</screen_edge_strength>
+  </resistance>
+  <focus>
+    <focusNew>yes</focusNew>
+    <followMouse>no</followMouse>
+  </focus>
+  <placement>
+    <policy>Smart</policy>
+  </placement>
+  <theme>
+    <name>Clearlooks</name>
+  </theme>
+  <desktops>
+    <number>2</number>
+    <firstdesk>1</firstdesk>
+    <popupTime>0</popupTime>
+  </desktops>
+  <keyboard>
+    <chainQuitKey>C-g</chainQuitKey>
+    <keybind key="A-Tab">
+      <action name="NextWindow"><dialog>list</dialog></action>
+    </keybind>
+    <keybind key="A-S-Tab">
+      <action name="PreviousWindow"><dialog>list</dialog></action>
+    </keybind>
+    <keybind key="A-Escape">
+      <action name="PreviousWindow" />
+    </keybind>
+    <keybind key="A-F4">
+      <action name="Close" />
+    </keybind>
+    <keybind key="W-Left">
+      <action name="UnmaximizeFull" />
+      <action name="MaximizeVert" />
+      <action name="MoveResizeTo"><x>0</x><y>0</y></action>
+    </keybind>
+    <keybind key="W-Right">
+      <action name="UnmaximizeFull" />
+      <action name="MaximizeVert" />
+      <action name="MoveResizeTo"><x>-0</x><y>0</y></action>
+    </keybind>
+    <keybind key="W-Up">
+      <action name="MaximizeFull" />
+    </keybind>
+    <keybind key="W-Down">
+      <action name="UnmaximizeFull" />
+    </keybind>
+    <keybind key="A-Left">
+      <action name="DesktopLeft"><wrap>no</wrap></action>
+    </keybind>
+    <keybind key="A-Right">
+      <action name="DesktopRight"><wrap>no</wrap></action>
+    </keybind>
+  </keyboard>
+  <mouse>
+    <context name="Frame">
+      <mousebind button="A-Left" action="Press">
+        <action name="Focus" /><action name="Raise" />
+      </mousebind>
+      <mousebind button="A-Left" action="Drag">
+        <action name="Move" />
+      </mousebind>
+      <mousebind button="A-Right" action="Drag">
+        <action name="Resize" />
+      </mousebind>
+    </context>
+    <context name="Desktop">
+      <mousebind button="Left" action="Press">
+        <action name="Focus" /><action name="Raise" />
+      </mousebind>
+      <mousebind button="A-Left" action="Drag">
+        <action name="Move" />
+      </mousebind>
+    </context>
+  </mouse>
+  <!-- Windows draw their own Dev OS title bars; openbox contributes the
+       behaviour: edge resize, Alt-Tab, snapping, two desktops. -->
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+      <maximized>no</maximized>
+    </application>
+  </applications>
+</openbox_config>

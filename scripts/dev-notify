@@ -1,0 +1,6 @@
+#!/bin/sh
+# Post a desktop notification: dev-notify "Title" "Body text"
+TITLE=${1:-Notification}
+BODY=${2:-}
+printf '{"title": "%s", "body": "%s"}\n' "$TITLE" "$BODY" \
+    > "/tmp/devos-notifications-$(id -u)" 2>/dev/null &

@@ -1,0 +1,11 @@
+#!/bin/sh
+# The user session: openbox (window management: resize, Alt-Tab, snapping)
+# with the desktop shell on top. dev-greeter execs this as the signed-in
+# user; when dev-shell exits, openbox goes down with the session.
+openbox &
+OPENBOX_PID=$!
+trap 'kill $OPENBOX_PID 2>/dev/null' TERM INT
+/usr/bin/dev-shell &
+SHELL_PID=$!
+wait $SHELL_PID
+kill $OPENBOX_PID 2>/dev/null

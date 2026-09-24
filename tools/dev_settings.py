@@ -20,8 +20,8 @@ MODES = ('desktop', 'server')
 
 DEFAULTS = {'theme': 'dev-dark', 'clock.hour12': False, 'clock.showSeconds': True,
             'clock.dateFormat': '%b %d, %Y', 'font.family': 'DejaVu Sans',
-            'desktop.background': 'none'}
-BOOLEANS = ('clock.hour12', 'clock.showSeconds')
+            'desktop.background': 'none', 'input.thai': False}
+BOOLEANS = ('clock.hour12', 'clock.showSeconds', 'input.thai')
 
 
 def _printable(value, limit):

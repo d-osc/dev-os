@@ -446,6 +446,48 @@ class Label:
 KEYSYM_RETURN, KEYSYM_BACKSPACE, KEYSYM_ESCAPE = 0xFF0D, 0xFF08, 0xFF1B
 
 
+# Thai Kedmanee layout over a US keyboard: the ASCII character
+# XLookupString reports for each key maps to the Thai character engraved
+# on that key. The base layer keys on the lowercase ASCII character and
+# the shift layer on the uppercase one.
+THAI_KEDMANEE = {
+    '`': '\u0e4f', '1': '\u0e45', '2': '/', '3': '-', '4': '\u0e20',
+    '5': '\u0e16', '6': '\u0e38', '7': '\u0e36', '8': '\u0e04',
+    '9': '\u0e15', '0': '\u0e08', '-': '\u0e02', '=': '\u0e0a',
+    'q': '\u0e46', 'w': '\u0e44', 'e': '\u0e33', 'r': '\u0e1e',
+    't': '\u0e30', 'y': '\u0e31', 'u': '\u0e35', 'i': '\u0e23',
+    'o': '\u0e19', 'p': '\u0e22', '[': '\u0e1a', ']': '\u0e25',
+    'a': '\u0e1f', 's': '\u0e2b', 'd': '\u0e01', 'f': '\u0e14',
+    'g': '\u0e49', 'h': '\u0e48', 'j': '\u0e32', 'k': '\u0e2a',
+    'l': '\u0e27', ';': '\u0e07', "'": '\u0e07', 'z': '\u0e1a',
+    'x': '\u0e1b', 'c': '\u0e41', 'v': '\u0e2d', 'b': '\u0e34',
+    'n': '\u0e37', 'm': '\u0e17', ',': '\u0e21', '.': '\u0e43',
+    '/': '\u0e1d', '\\': '\u0e03',
+}
+THAI_KEDMANEE_SHIFT = {
+    '#': '\u0e53', '$': '\u0e54', '%': '\u0e55', '^': '\u0e56',
+    '&': '\u0e57', '*': '\u0e58', '(': '\u0e59', '_': '\u0e4f',
+    '+': '\u0e4a', '"': '\u0e0b', '?': '\u0e0c', '>': '\u0e0e',
+    '<': '\u0e11', '{': '\u0e24', '}': '\u0e26', ':': '\u0e4d',
+    'Q': '\u0e50', 'W': '\u0e0b', 'E': '\u0e11', 'R': '\u0e18',
+    'T': '\u0e4a', 'Y': '\u0e13', 'U': '\u0e0c', 'I': '\u0e4f',
+    'O': '\u0e42', 'P': '\u0e0b', 'A': '\u0e24', 'S': '\u0e0b',
+    'D': '\u0e0c', 'F': '\u0e26', 'G': '\u0e4d', 'H': '\u0e4a',
+    '~': '\u0e4f',
+}
+
+
+def thai_char(character):
+    """The Kedmanee character for one ASCII input character, or None."""
+    if character in THAI_KEDMANEE:
+        return THAI_KEDMANEE[character]
+    if character.isupper():
+        return THAI_KEDMANEE_SHIFT.get(character)
+    if character.isalpha():
+        return THAI_KEDMANEE.get(character.lower())
+    return THAI_KEDMANEE_SHIFT.get(character)
+
+
 class Entry:
     """A single-line text field with focus, masking and keyboard feeding.
 
@@ -456,9 +498,11 @@ class Entry:
 
     LIMIT = 64
 
-    def __init__(self, x, y, width, height, label='', placeholder='', masked=False):
+    def __init__(self, x, y, width, height, label='', placeholder='',
+                 masked=False, thai=False):
         self.rect = (x, y, width, height)
         self.label, self.placeholder, self.masked = label, placeholder, masked
+        self.thai = thai
         self.text, self.focused = '', False
 
     def hit(self, x, y):
@@ -474,7 +518,12 @@ class Entry:
             self.text = self.text[:-1]
             return None
         if char and 32 <= ord(char) < 127 and len(self.text) < self.LIMIT:
-            self.text += char
+            if self.thai:
+                mapped = thai_char(char)
+                if mapped:
+                    self.text += mapped
+            else:
+                self.text += char
         return None
 
     def display_text(self):
@@ -544,9 +593,10 @@ class Window:
                             (1 << 15) | (1 << 2) | (1 << 3) | (1 << 6))
         self.surface = None
         self.cr = None
-        self.buttons, self.labels = [], []
+        self.buttons, self.labels, self.entries = [], [], []
         self.draw_callback = None
         self.on_close = None
+        self.on_click = None      # (x, y) presses that hit no widget
         self._drag = None
         self._control_hover = None
         self._stashed = None
@@ -600,6 +650,11 @@ class Window:
         self.labels.append(Label(*args, **keywords))
         return self.labels[-1]
 
+    def add_entry(self, *args, **keywords):
+        entry = Entry(*args, **keywords)
+        self.entries.append(entry)
+        return entry
+
     def client_top(self):
         return TITLE_HEIGHT if self.kind == 'toplevel' else 0
 
@@ -645,6 +700,8 @@ class Window:
             self.draw_callback(self)
         for label in self.labels:
             label.draw(tk, cr)
+        for entry in self.entries:
+            entry.draw(tk, cr)
         for button in self.buttons:
             button.draw(tk, cr)
         cairo.set_rgba(cr, *PALETTE['line'], 1.0)
@@ -703,6 +760,17 @@ class Window:
                     self.open_ = False
                     if self.on_close:
                         self.on_close()
+                elif kind == 2:
+                    if event.key.window == self.window and not self._drag:
+                        keysym = c.c_ulong()
+                        buffer = c.create_string_buffer(16)
+                        self.tk.api['lookup_string'](c.byref(event.key), buffer, 16,
+                                                     c.byref(keysym), None)
+                        character = buffer.value.decode('ascii', 'ignore')[:1]
+                        for item in self.entries:
+                            if item.focused:
+                                item.feed(keysym.value, character)
+                                self._dirty = True
                 elif kind in (4, 5, 6):
                     button_event = event.button
                     if button_event.window != self.window:
@@ -741,8 +809,12 @@ class Window:
                             else:
                                 self._last_title_press = press
                                 self._drag = (x, y)
+                        for item in self.entries:
+                            item.focused = item.hit(x, y)
                         for item in self.buttons:
                             item.press(x, y)
+                        if self.on_click and not self._drag:
+                            self.on_click(x, y)
                     elif kind == 5:
                         self._drag = None
                         for item in self.buttons:
