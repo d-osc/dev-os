@@ -30,6 +30,7 @@ install -D -m 0755 "$project/scripts/devos-desktop-boot" "$target/usr/bin/devos-
 install -D -m 0755 "$project/tools/dev_greeter.py" "$target/usr/bin/dev-greeter"
 install -D -m 0755 "$project/scripts/devos-session" "$target/usr/bin/devos-session"
 install -D -m 0755 "$project/tools/dev_files.py" "$target/usr/bin/dev-files"
+install -D -m 0755 "$project/tools/dev_edit.py" "$target/usr/bin/dev-edit"
 install -D -m 0755 "$project/scripts/dev-notify" "$target/usr/bin/dev-notify"
 # The xorg-server package ships S40xorg, which pre-starts "Xorg :0.0" at
 # boot; the desktop session must own the server instead (xinit per tty1),
@@ -49,6 +50,7 @@ install -D -m 0644 "$project/examples/extensions/dashboard/manifest.json" "$targ
 install -D -m 0644 "$project/examples/extensions/dashboard/extension.py" "$target/usr/share/devos/extensions/devos.dashboard/extension.py"
 install -D -m 0644 "$project/themes/dev-dark.json" "$target/usr/share/devos/themes/dev-dark.json"
 install -D -m 0644 "$project/themes/terminal-amber.json" "$target/usr/share/devos/themes/terminal-amber.json"
+install -D -m 0644 "$project/themes/high-contrast.json" "$target/usr/share/devos/themes/high-contrast.json"
 install -D -m 0755 "$project/tools/dev_notifications.py" "$target/usr/lib/devos/dev_notifications.py"
 install -D -m 0755 "$project/installer/devos-install.py" "$target/usr/sbin/devos-install"
 install -D -m 0755 "$project/tools/memory-probe.py" "$target/usr/lib/devos/memory-probe.py"

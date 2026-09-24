@@ -1,0 +1,23 @@
+{
+  "name": "High Contrast",
+  "colors": {
+    "bg": "#000000",
+    "chrome": "#101010",
+    "line": "#767676",
+    "text": "#ffffff",
+    "dim": "#c8c8c8",
+    "accent": "#ffff00",
+    "accentText": "#000000",
+    "blue": "#00ffff",
+    "red": "#ff5555"
+  },
+  "corners": {
+    "window": 0,
+    "button": 0,
+    "menu": 0,
+    "row": 0,
+    "chip": 0,
+    "start": 0,
+    "icon": 0
+  }
+}

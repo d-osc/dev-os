@@ -265,6 +265,25 @@ def toast_layout(messages, now, width, height):
     return cards
 
 
+def battery_state(base='/sys/class/power_supply'):
+    """(charge percent | None, charging) from the kernel power supply."""
+    root = Path(base)
+    try:
+        supplies = sorted(root.iterdir())
+    except OSError:
+        return None, False
+    for supply in supplies:
+        try:
+            if (supply / 'type').read_text().strip() != 'Battery':
+                continue
+            capacity = int((supply / 'capacity').read_text().strip())
+            status = (supply / 'status').read_text().strip().lower()
+            return max(0, min(100, capacity)), status == 'charging'
+        except (OSError, ValueError):
+            continue
+    return None, False
+
+
 def network_state(command='ip'):
     """('online' | 'offline', detail) from the running ip command."""
     try:
@@ -477,7 +496,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             print('extension %s failed: %s' % (broken['id'], broken['error']),
                   file=sys.stderr)
     system_apps = []
-    for label, program in (('Terminal', '/usr/bin/xterm'), ('Files', '/usr/bin/dev-files')):
+    for label, program in (('Terminal', '/usr/bin/xterm'), ('Files', '/usr/bin/dev-files'), ('Edit', '/usr/bin/dev-edit')):
         if Path(program).is_file():
             system_apps.append({'kind': 'app', 'name': program, 'label': label,
                                 'comment': 'system application', 'categories': ['System'],
@@ -673,6 +692,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         draw_icon = dev_theme.draw_icon
         colors = dev_gui.THEME_COLORS
         state, detail = network_state()
+        charge, charging = battery_state()
         if not hidden('tray'):
             draw_icon(cairo, cr_bar, dev_gui.ICONS['wifi'], separator - 32, 12,
                       DESIGN['green'] if state == 'online' else DESIGN['gray'],
@@ -682,6 +702,9 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                       DESIGN['gray'], colors, 1.4)
             draw_icon(cairo, cr_bar, dev_gui.ICONS['bell'], separator - 72, 12,
                       DESIGN['gray'], colors, 1.4)
+            if charge is not None:
+                text(cr_bar, ('+' if charging else '') + str(charge) + '%',
+                     separator - 168, 24, DESIGN['gray'], 9.0)
         tray_right[0] = None
         if host and host.tray:
             tray_right[0] = separator - TRAY_LEFT

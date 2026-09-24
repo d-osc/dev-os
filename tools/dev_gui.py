@@ -597,6 +597,7 @@ class Window:
         self.draw_callback = None
         self.on_close = None
         self.on_click = None      # (x, y) presses that hit no widget
+        self.on_key = None        # (keysym, char, modifiers) key presses
         self._drag = None
         self._control_hover = None
         self._stashed = None
@@ -767,10 +768,14 @@ class Window:
                         self.tk.api['lookup_string'](c.byref(event.key), buffer, 16,
                                                      c.byref(keysym), None)
                         character = buffer.value.decode('ascii', 'ignore')[:1]
+                        handled = False
+                        if self.on_key:
+                            self.on_key(keysym.value, character, event.key.state)
+                            handled = True
                         for item in self.entries:
-                            if item.focused:
+                            if item.focused and not handled:
                                 item.feed(keysym.value, character)
-                                self._dirty = True
+                        self._dirty = True
                 elif kind in (4, 5, 6):
                     button_event = event.button
                     if button_event.window != self.window:
