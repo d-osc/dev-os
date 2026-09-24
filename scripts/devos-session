@@ -9,6 +9,10 @@ fi
 openbox &
 OPENBOX_PID=$!
 trap 'kill $OPENBOX_PID 2>/dev/null' TERM INT
+# First boot: the setup wizard runs once, then marks itself done.
+if [ ! -e "$HOME/.config/devos/wizard-done" ] && [ -x /usr/bin/dev-wizard ]; then
+    /usr/bin/dev-wizard > /tmp/devos-wizard.log 2>&1 &
+fi
 /usr/bin/dev-shell &
 SHELL_PID=$!
 wait $SHELL_PID

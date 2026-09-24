@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.append('/usr/lib/devos')
 import dev_background  # noqa: E402
 import dev_gui  # noqa: E402
+import dev_settings  # noqa: E402
 
 WIDTH, HEIGHT = 700, 500
 TITLE_HEIGHT = 84
@@ -79,7 +80,11 @@ def main():
              'kind': 'text', 'payload': 'type an address and press Enter'}
     toolkit = dev_gui.Toolkit()
     window = dev_gui.Window(toolkit, WIDTH, HEIGHT, title='Web', x=110, y=80)
-    address = window.add_entry(16, 44, WIDTH - 130, 32, label='Address')
+    try:
+        thai = bool(dev_settings.active().get('input.thai'))
+    except Exception:
+        thai = False
+    address = window.add_entry(16, 44, WIDTH - 130, 32, label='Address', thai=thai)
     address.text = state['url']
 
     def load():

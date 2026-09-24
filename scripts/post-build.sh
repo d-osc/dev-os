@@ -34,6 +34,30 @@ install -D -m 0755 "$project/tools/dev_edit.py" "$target/usr/bin/dev-edit"
 install -D -m 0755 "$project/tools/dev_web.py" "$target/usr/bin/dev-web"
 install -D -m 0755 "$project/tools/dev_music.py" "$target/usr/bin/dev-music"
 install -D -m 0755 "$project/tools/dev_pointer.py" "$target/usr/bin/dev-pointer"
+install -D -m 0755 "$project/tools/dev_view.py" "$target/usr/bin/dev-view"
+install -D -m 0755 "$project/tools/dev_wizard.py" "$target/usr/bin/dev-wizard"
+install -D -m 0644 "$project/tools/dev_admin.py" "$target/usr/lib/devos/dev_admin.py"
+mkdir -p "$target/etc/skel/Music" "$target/etc/skel/Pictures"
+# A deterministic sample picture so View has something to show first boot.
+python3 - "$target/etc/skel/Pictures/dev-os.png" <<'PY'
+import struct, sys, zlib
+width, height = 192, 128
+rows = bytearray()
+for y in range(height):
+    rows.append(0)
+    for x in range(width):
+        rows += bytes(((x * 255) // width,
+                       (y * 255) // height,
+                       128 if (x // 16 + y // 16) % 2 else 90))
+def chunk(tag, data):
+    return struct.pack('>I', len(data)) + tag + data \
+        + struct.pack('>I', zlib.crc32(tag + data) & 0xFFFFFFFF)
+png = b'\x89PNG\r\n\x1a\n'
+png += chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+png += chunk(b'IDAT', zlib.compress(bytes(rows), 9))
+png += chunk(b'IEND', b'')
+open(sys.argv[1], 'wb').write(png)
+PY
 install -D -m 0755 "$project/scripts/dev-notify" "$target/usr/bin/dev-notify"
 mkdir -p "$target/etc/skel/Music"
 python3 - "$target/etc/skel/Music/chime.wav" <<'PY'

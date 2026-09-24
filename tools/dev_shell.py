@@ -44,6 +44,7 @@ MAX_PINNED = 9
 TRAY_RESERVE = 220
 CLOCK_PAD = 10
 CLOCK_BLOCK = 68
+KB_BLOCK = 46                    # clickable keyboard-layout badge in the tray
 MENU_WIDTH = 320
 MENU_ITEM_HEIGHT = 36
 MENU_HEADER_HEIGHT = 26
@@ -116,6 +117,8 @@ def narrator_text(target, names=()):
     """The screen-reader announcement for one hover target; None when quiet."""
     if target is None:
         return None
+    if target == 'kb':
+        return 'Keyboard layout button'
     if isinstance(target, tuple):
         kind, index = target
         if kind == 'app':
@@ -164,7 +167,7 @@ def pinned_states(items, clients):
     return [window is not None for window in windows], active
 
 
-def bar_regions(width, app_count=0, tray_right=None, tray_count=0):
+def bar_regions(width, app_count=0, tray_right=None, tray_count=0, kb_right=None):
     """Clickable spans of the bar: (kind, start, end, index)."""
     regions = [('menu', 0, MENU_END, None)]
     left = PIN_START
@@ -175,12 +178,15 @@ def bar_regions(width, app_count=0, tray_right=None, tray_count=0):
         for index in range(tray_count):
             start = tray_right - TRAY_PITCH * (index + 1) + TRAY_GAP
             regions.append(('tray', start, start + TRAY_SIZE, index))
+    if kb_right is not None:
+        regions.append(('kb', kb_right - KB_BLOCK, kb_right, None))
     regions.append(('clock', width - CLOCK_PAD - CLOCK_BLOCK, width, None))
     return regions
 
 
-def bar_hit(width, x, app_count=0, tray_right=None, tray_count=0):
-    for kind, start, end, index in bar_regions(width, app_count, tray_right, tray_count):
+def bar_hit(width, x, app_count=0, tray_right=None, tray_count=0, kb_right=None):
+    for kind, start, end, index in bar_regions(width, app_count, tray_right,
+                                               tray_count, kb_right):
         if start <= x < end:
             return kind, index
     return None, None
@@ -214,10 +220,11 @@ def consent_choice(x, y, item_count, consent):
 
 
 def hover_key(area, x, y, *, width=0, app_count=0, tray_right=None, tray_count=0,
-              item_count=0, consent=False):
+              item_count=0, consent=False, kb_right=None):
     """Which actionable element the pointer is over, for hover feedback."""
     if area == 'bar':
-        for kind, start, end, index in bar_regions(width, app_count, tray_right, tray_count):
+        for kind, start, end, index in bar_regions(width, app_count, tray_right,
+                                                   tray_count, kb_right):
             if start <= x < end and kind != 'clock':
                 return kind if index is None else (kind, index)
         return None
@@ -396,6 +403,19 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                                (1 << 9) | (1 << 11) | (1 << 17),
                                c.byref(bar_attributes))
     api['store_name'](display, bar, b'Dev OS Shell')
+    kb_right = [None]             # right edge of the layout badge, set per paint
+    bar_hint = [None]
+
+    def publish_bar(xid_only=False):
+        try:
+            hint = str(bar) if xid_only else \
+                '%d %d' % (bar, kb_right[0] or 0)
+            if hint != bar_hint[0]:
+                Path('/tmp/devos-bar-%d' % os.getuid()).write_text(hint + '\n')
+                bar_hint[0] = hint
+        except OSError:
+            pass
+    publish_bar(xid_only=True)
 
     # The menu prefers a 32-bit ARGB visual for true translucency; capture
     # mode stays on the default visual because the test display's XWayland
@@ -526,8 +546,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                   file=sys.stderr)
     system_apps = []
     for label, program in (('Terminal', '/usr/bin/xterm'), ('Files', '/usr/bin/dev-files'),
-                           ('Edit', '/usr/bin/dev-edit'), ('Web', '/usr/bin/dev-web'),
-                           ('Music', '/usr/bin/dev-music')):
+                           ('Edit', '/usr/bin/dev-edit'), ('View', '/usr/bin/dev-view'),
+                           ('Web', '/usr/bin/dev-web'), ('Music', '/usr/bin/dev-music')):
         if Path(program).is_file():
             system_apps.append({'kind': 'app', 'name': program, 'label': label,
                                 'comment': 'system application', 'categories': ['System'],
@@ -554,6 +574,20 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     lock_mode = ['lock']
     lock_input = ['']
     narrator = bool(settings.get('accessibility.narrator'))
+
+    def toggle_layout():
+        """Flip the desktop keyboard layout (English <-> Thai Kedmanee)."""
+        thai = not settings.get('input.thai')
+        settings['input.thai'] = thai
+        try:
+            dev_settings.update_user({'input.thai': thai})
+        except (OSError, ValueError) as error:
+            print('keyboard layout not saved: %s' % error, file=sys.stderr)
+        label = 'Thai - Kedmanee' if thai else 'English'
+        toasts.append({'title': 'Keyboard layout', 'body': label,
+                       'at': time.monotonic()})
+        print('[keyboard] %s' % label, flush=True)
+        draw_bar()
 
     def hidden(section):
         return bool(host and section in host.hidden)
@@ -739,6 +773,23 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         state, detail = network_state()
         charge, charging = battery_state()
         if not hidden('tray'):
+            # Keyboard-layout badge: click (or the narrator) toggles input.thai.
+            thai = bool(settings.get('input.thai'))
+            kb_right[0] = separator - 195
+            cairo.set_rgba(cr_bar, *DESIGN['button'], 1.0)
+            cairo.rounded(cr_bar, separator - 240, 12 * scale, KB_BLOCK - 4,
+                          bar_height - 24 * scale, 5)
+            cairo.fill(cr_bar)
+            cairo.set_rgba(cr_bar, *DESIGN['line'], 1.0)
+            cairo.set_line_width(cr_bar, 1)
+            cairo.rounded(cr_bar, separator - 240 + 0.5, 12 * scale + 0.5,
+                          KB_BLOCK - 5, bar_height - 24 * scale - 1, 5)
+            cairo.stroke(cr_bar)
+            badge = 'TH' if thai else 'US'
+            text(cr_bar, badge, separator - 240 + (KB_BLOCK - 4) / 2
+                 - measure(badge, 10.0, True) / 2, 24 * scale,
+                 DESIGN['green'] if thai else DESIGN['gray'], 10.0, True)
+            publish_bar()
             draw_icon(cairo, cr_bar, dev_gui.ICONS['wifi'], separator - 32, 12 * scale,
                       DESIGN['green'] if state == 'online' else DESIGN['gray'],
                       colors, 1.4)
@@ -1055,7 +1106,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 if kind == 6 and not locked[0]:
                     target = hover_key('bar', position.x, position.y, width=width,
                                        app_count=len(pinned), tray_right=tray_right[0],
-                                       tray_count=tray_count)
+                                       tray_count=tray_count, kb_right=kb_right[0])
                     if narrator and target is not None and target != hover[0]:
                         message = narrator_text(target, [item['label'] for item in pinned])
                         toasts.append({'title': 'Screen reader', 'body': message,
@@ -1067,7 +1118,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                         if panel_handle.slot['visible']:
                             panel_handle.slot['request'] = 'hide'
                     hit, index = bar_hit(width, position.x, len(pinned),
-                                         tray_right[0], tray_count)
+                                         tray_right[0], tray_count, kb_right[0])
                     if hit is None and host:
                         for start, end, widget_index in widget_zones[0]:
                             if start <= position.x < end:
@@ -1084,6 +1135,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                             host.tray_click(index)
                         except Exception as error:
                             print('tray command failed: %s' % error, file=sys.stderr)
+                    elif hit == 'kb':
+                        toggle_layout()
                     elif hit == 'menu':
                         open_menu(not menu_open)
                     elif hit == 'app' and index is not None and index < len(pinned):

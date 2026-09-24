@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.append('/usr/lib/devos')
 import dev_gui  # noqa: E402
+import dev_settings  # noqa: E402
 
 ROW_HEIGHT = 30
 LIST_TOP = 112
@@ -76,7 +77,11 @@ def main():
 
     toolkit = dev_gui.Toolkit()
     window = dev_gui.Window(toolkit, WIDTH, HEIGHT, title='Files', x=120, y=90)
-    path_entry = window.add_entry(16, 46, WIDTH - 130, 32, label='Path')
+    try:
+        thai = bool(dev_settings.active().get('input.thai'))
+    except Exception:
+        thai = False
+    path_entry = window.add_entry(16, 46, WIDTH - 130, 32, label='Path', thai=thai)
     up_button = window.add_button('Up', WIDTH - 100, 46, 80, 32)
     state = {'dir': current, 'rows': []}
 

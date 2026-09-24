@@ -179,6 +179,8 @@ def connect():
         'move': bind('XMoveWindow', c.c_int, c.c_void_p, c.c_ulong, c.c_int, c.c_int),
         'warp': bind('XWarpPointer', None, c.c_void_p, c.c_ulong, c.c_ulong,
                      c.c_int, c.c_int, c.c_uint, c.c_uint, c.c_int, c.c_int),
+        'send_event': bind('XSendEvent', c.c_int, c.c_void_p, c.c_ulong, c.c_int,
+                           c.c_long, c.c_void_p),
         'store_name': bind('XStoreName', c.c_int, c.c_void_p, c.c_ulong, c.c_char_p),
         'select_input': bind('XSelectInput', c.c_int, c.c_void_p, c.c_ulong, c.c_long),
         'map': bind('XMapWindow', c.c_int, c.c_void_p, c.c_ulong),
@@ -274,6 +276,7 @@ class Cairo:
                               c.c_double, c.c_double, c.c_double)
         self.clip = bind('cairo_clip', None, c.c_void_p)
         self.scale = bind('cairo_scale', None, c.c_void_p, c.c_double, c.c_double)
+        self.translate = bind('cairo_translate', None, c.c_void_p, c.c_double, c.c_double)
         self.surface_from_png = bind('cairo_image_surface_create_from_png',
                                      c.c_void_p, c.c_char_p)
         self.surface_from_data = bind('cairo_image_surface_create_for_data',
@@ -592,7 +595,8 @@ class Window:
         delete = c.c_ulong(toolkit.delete)
         api['set_protocols'](display, self.window, c.byref(delete), 1)
         api['select_input'](display, self.window,
-                            (1 << 15) | (1 << 2) | (1 << 3) | (1 << 6))
+                            (1 << 0) | (1 << 1) | (1 << 15) | (1 << 2)
+                            | (1 << 3) | (1 << 6))
         self.surface = None
         self.cr = None
         self.buttons, self.labels, self.entries = [], [], []
@@ -747,6 +751,12 @@ class Window:
 
     def show(self):
         self.tk.api['map'](self.tk.display, self.window)
+        # A newly opened window takes keyboard focus: without this, keys go
+        # nowhere when no window held focus before (e.g. right after login).
+        try:
+            self.tk.api['set_input_focus'](self.tk.display, self.window, 1, 0)
+        except Exception:
+            pass
         self.open_ = True
 
     def run(self, *, tick=None, interval=1.0, close_after=None, on_tick_capture=None):
@@ -771,9 +781,17 @@ class Window:
                                                      c.byref(keysym), None)
                         character = buffer.value.decode('ascii', 'ignore')[:1]
                         handled = False
-                        if self.on_key:
-                            self.on_key(keysym.value, character, event.key.state)
+                        if keysym.value == 0xFF09 and self.entries:
+                            # Tab cycles entry focus so forms work without a mouse.
+                            current = next((index for index, item
+                                             in enumerate(self.entries)
+                                             if item.focused), -1)
+                            for index, item in enumerate(self.entries):
+                                item.focused = index == (current + 1) % len(self.entries)
                             handled = True
+                        elif self.on_key:
+                            handled = bool(self.on_key(keysym.value, character,
+                                                       event.key.state))
                         for item in self.entries:
                             if item.focused and not handled:
                                 item.feed(keysym.value, character)

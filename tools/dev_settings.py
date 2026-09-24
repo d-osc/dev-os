@@ -86,6 +86,25 @@ def load_raw(path):
     return validate(json.loads(data))
 
 
+def save(settings, path):
+    """Write one validated settings object to a file atomically."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name('.' + path.name + '.tmp')
+    temporary.write_text(json.dumps(resolve(settings), indent=2) + '\n')
+    os.replace(temporary, path)
+
+
+def update_user(patch, path=None):
+    """Merge a validated patch into the user settings file atomically."""
+    target = Path(path) if path is not None else USER
+    current = load_raw(target) if target.is_file() else {}
+    merged = dict(current)
+    merged.update(validate(patch))
+    save(merged, target)
+    return merged
+
+
 def theme_path(value, dirs=THEME_DIRS):
     """A theme setting to a file path; None means the built-in default."""
     if value == 'default':

@@ -14,6 +14,9 @@ def load(name, file_name):
 
 web = load('dev_web_local', 'dev_web.py')
 music = load('dev_music_local', 'dev_music.py')
+view = load('dev_view_local', 'dev_view.py')
+wizard = load('dev_wizard_local', 'dev_wizard.py')
+admin = load('dev_admin_local', 'dev_admin.py')
 settings = load('dev_settings_apps', 'dev_settings.py')
 shell = load('shell_apps', 'dev_shell.py')
 
@@ -120,6 +123,130 @@ class Narrator(unittest.TestCase):
         self.assertEqual(shell.scaled(13.0, 1.5), 19.5)
         self.assertEqual(shell.scaled(13.0), 13.0)
         self.assertEqual(shell.scaled(8.5, 2.0), 17.0)
+
+
+class ImageViewer(unittest.TestCase):
+    def test_listing_filters_and_sorts_images(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ('b.PNG', 'a.png', 'c.jpg', 'note.txt', 'd.jpeg'):
+                (Path(directory) / name).write_bytes(b'x')
+            self.assertEqual(view.listing(directory),
+                             ['a.png', 'b.PNG', 'c.jpg', 'd.jpeg'])
+            self.assertEqual(view.listing(str(Path(directory) / 'missing')), None)
+
+    def test_fit_centers_and_never_stretches(self):
+        # Landscape image in a wider box: height-limited, centered sideways.
+        scale, dx, dy = view.fit(400, 200, 600, 100)
+        self.assertAlmostEqual(scale, 0.5)
+        self.assertAlmostEqual(dx, 200.0)
+        self.assertAlmostEqual(dy, 0.0)
+        # Portrait image in a square box: height-limited, centered sideways.
+        scale, dx, dy = view.fit(100, 300, 200, 200)
+        self.assertAlmostEqual(scale, 2.0 / 3.0)
+        self.assertAlmostEqual(dx, (200 - 100 * (2.0 / 3.0)) / 2)
+        self.assertAlmostEqual(dy, 0.0)
+        # Degenerate sizes never divide by zero.
+        self.assertEqual(view.fit(0, 100, 50, 50), (1.0, 0.0, 0.0))
+        self.assertEqual(view.fit(10, 10, 0, 0), (1.0, 0.0, 0.0))
+
+    def test_row_at_maps_clicks_to_images(self):
+        names = ['a.png', 'b.png']
+        self.assertEqual(view.row_at(view.LIST_TOP, names, view.HEIGHT), 'a.png')
+        self.assertIsNone(view.row_at(view.LIST_TOP - 1, names, view.HEIGHT))
+        self.assertIsNone(
+            view.row_at(view.CANVAS_TOP + 50, names, view.HEIGHT))
+
+
+class FirstBootWizard(unittest.TestCase):
+    def test_username_rules(self):
+        self.assertIsNone(wizard.validate_username('tester'))
+        self.assertIsNone(wizard.validate_username('a-b_2'))
+        for bad in ('', 'x' * 25, 'Root', 'has space', 'root', 'ünicode'):
+            self.assertTrue(wizard.validate_username(bad), repr(bad))
+
+    def test_password_pair_rules(self):
+        self.assertIsNone(wizard.password_error('secret1', 'secret1'))
+        self.assertTrue(wizard.password_error('short', 'short'))
+        self.assertTrue(wizard.password_error('secret1', 'secret2'))
+
+    def test_language_patch_maps_to_thai_input(self):
+        self.assertEqual(wizard.language_patch(0), {'input.thai': False})
+        self.assertEqual(wizard.language_patch(1), {'input.thai': True})
+        with self.assertRaises(ValueError):
+            wizard.language_patch(2)
+
+    def test_step_order_covers_user_zone_language(self):
+        self.assertEqual(wizard.STEPS,
+                         ('welcome', 'user', 'timezone', 'language', 'done'))
+        self.assertIn('Asia/Bangkok', wizard.TIMEZONES)
+
+
+class AdminCommands(unittest.TestCase):
+    def test_chpasswd_quotes_the_secret(self):
+        argv = admin.chpasswd_command('tester', "pa'ss")
+        self.assertEqual(argv[0:2], ['sh', '-c'])
+        self.assertIn("chpasswd", argv[2])
+        # The password survives single quotes via shell escaping.
+        self.assertIn("'tester:pa'\\''ss'", argv[2])
+
+    def test_adduser_and_timezone_commands(self):
+        self.assertEqual(admin.adduser_command('tester'),
+                         ['adduser', '-D', '-h', '/home/tester',
+                          '-s', '/bin/sh', 'tester'])
+        self.assertEqual(admin.timezone_command('Asia/Bangkok'),
+                         ['cp', '/usr/share/zoneinfo/Asia/Bangkok',
+                          '/etc/localtime'])
+
+    def test_run_as_root_rejects_bad_argv(self):
+        for bad in ('string', [], ['']):
+            with self.assertRaises(ValueError):
+                admin.run_as_root(bad, 'pw')
+
+
+class SettingsUpdateUser(unittest.TestCase):
+    def test_update_user_merges_and_persists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'settings.json'
+            merged = settings.update_user({'input.thai': True}, path)
+            self.assertTrue(merged['input.thai'])
+            self.assertTrue(settings.load(path)['input.thai'])
+            settings.update_user({'clock.hour12': True}, path)
+            final = settings.load(path)
+            self.assertTrue(final['clock.hour12'])
+            self.assertTrue(final['input.thai'])       # earlier value kept
+            with self.assertRaises(ValueError):
+                settings.update_user({'display.scale': 9}, path)
+
+    def test_save_writes_validated_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'settings.json'
+            settings.save({'theme': 'dev-dark'}, path)
+            self.assertEqual(settings.load(path)['theme'], 'dev-dark')
+            self.assertEqual(settings.load(path)['display.scale'], 1.0)
+
+
+class KeyboardBadge(unittest.TestCase):
+    def test_kb_region_lands_before_the_clock(self):
+        width = 1280
+        kb_right = width - 90
+        kinds = [(kind, start, end) for kind, start, end, _ in
+                 shell.bar_regions(width, 1, kb_right=kb_right)]
+        self.assertIn(('kb', kb_right - shell.KB_BLOCK, kb_right), kinds)
+        clock = [entry for entry in kinds if entry[0] == 'clock'][0]
+        self.assertLess(kb_right, clock[1])          # badge sits left of clock
+        # The badge is clickable and hoverable at its centre.
+        center = kb_right - shell.KB_BLOCK // 2
+        self.assertEqual(shell.bar_hit(width, center, 1, kb_right=kb_right),
+                         ('kb', None))
+        self.assertEqual(
+            shell.hover_key('bar', center, 10, width=width, app_count=1,
+                            kb_right=kb_right), 'kb')
+        # No badge published: exactly the old regions, nothing new.
+        self.assertNotIn('kb', [entry[0] for entry in
+                                shell.bar_regions(width, 1)])
+
+    def test_narrator_announces_the_badge(self):
+        self.assertEqual(shell.narrator_text('kb'), 'Keyboard layout button')
 
 
 class DisplayScaleSetting(unittest.TestCase):
