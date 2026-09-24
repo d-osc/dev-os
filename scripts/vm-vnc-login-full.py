@@ -21,4 +21,5 @@ client.captureScreen('/home/ondev/devos-vm/f-typed.png')
 
 client.keyPress('return')
 time.sleep(1.5)
+client.disconnect()
 print('LOGIN-SENT')

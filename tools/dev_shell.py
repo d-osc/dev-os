@@ -107,6 +107,24 @@ def date_text(moment=None, settings=None):
     return time.strftime(pattern, time.localtime(moment)).upper()
 
 
+def scaled(size, scale=1.0):
+    """A font size under the display.scale setting (HiDPI simulation)."""
+    return size * (scale or 1.0)
+
+
+def narrator_text(target, names=()):
+    """The screen-reader announcement for one hover target; None when quiet."""
+    if target is None:
+        return None
+    if isinstance(target, tuple):
+        kind, index = target
+        if kind == 'app':
+            label = names[index] if index < len(names) else 'application'
+            return 'App %d: %s' % (index + 1, label)
+        return '%s icon %d' % (kind.title(), index + 1)
+    return target.replace('_', ' ').title()
+
+
 def monogram(item):
     """The single-character glyph shown in a pinned app icon."""
     for character in item['label']:
@@ -168,10 +186,11 @@ def bar_hit(width, x, app_count=0, tray_right=None, tray_count=0):
     return None, None
 
 
-def menu_geometry(screen_width, screen_height, item_count, consent=False):
+def menu_geometry(screen_width, screen_height, item_count, consent=False,
+                  bar_height=BAR_HEIGHT):
     height = MENU_HEADER_HEIGHT + max(1, item_count) * MENU_ITEM_HEIGHT
-    height = min(height + (CONSENT_HEIGHT if consent else 0), screen_height - BAR_HEIGHT - 2)
-    return {'x': 2, 'y': screen_height - BAR_HEIGHT - height - 2,
+    height = min(height + (CONSENT_HEIGHT if consent else 0), screen_height - bar_height - 2)
+    return {'x': 2, 'y': screen_height - bar_height - height - 2,
             'width': min(MENU_WIDTH, screen_width - 4), 'height': height}
 
 
@@ -349,6 +368,8 @@ def theme_from(path, settings=None, settings_dir=None):
 def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=None,
         extension_dirs=None):
     settings = settings or {}
+    scale = settings.get('display.scale') or 1.0
+    bar_height = int(BAR_HEIGHT * scale)
     problem = mode_error(dev_settings.read_mode(root))
     if problem:
         raise SystemExit(problem)
@@ -370,8 +391,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     bar_attributes = dev_gui.SetWindowAttributes(
         border_pixel=0, override_redirect=1,
         event_mask=(1 << 15) | (1 << 2) | (1 << 3) | (1 << 6))
-    bar = api['create_window'](display, root_window, 0, height - BAR_HEIGHT,
-                               width, BAR_HEIGHT, 0, 0, 1, default_visual,
+    bar = api['create_window'](display, root_window, 0, height - bar_height,
+                               width, bar_height, 0, 0, 1, default_visual,
                                (1 << 9) | (1 << 11) | (1 << 17),
                                c.byref(bar_attributes))
     api['store_name'](display, bar, b'Dev OS Shell')
@@ -407,9 +428,9 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     set_atoms(bar, '_NET_WM_STATE', ['_NET_WM_STATE_ABOVE', '_NET_WM_STATE_SKIP_TASKBAR',
                                      '_NET_WM_STATE_SKIP_PAGER'])
     set_atom_values(bar, '_NET_WM_DESKTOP', [0xFFFFFFFF], 'CARDINAL')
-    set_atom_values(bar, '_NET_WM_STRUT', [0, 0, 0, BAR_HEIGHT], 'CARDINAL')
+    set_atom_values(bar, '_NET_WM_STRUT', [0, 0, 0, bar_height], 'CARDINAL')
     set_atom_values(bar, '_NET_WM_STRUT_PARTIAL',
-                    [0, 0, 0, BAR_HEIGHT, 0, 0, 0, 0, 0, 0, 0, width], 'CARDINAL')
+                    [0, 0, 0, bar_height, 0, 0, 0, 0, 0, 0, 0, width], 'CARDINAL')
     protocols = api['atom'](display, b'WM_PROTOCOLS', 1)
     delete = api['atom'](display, b'WM_DELETE_WINDOW', 1)
     api['set_protocols'](display, bar, c.byref(c.c_ulong(delete)), 1)
@@ -445,7 +466,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     lock_cr = cairo.create(lock_surface)
     lock_mapped = [False]
 
-    bar_surface = cairo.surface_create(display, bar, default_visual, width, BAR_HEIGHT)
+    bar_surface = cairo.surface_create(display, bar, default_visual, width, bar_height)
     cr_bar = cairo.create(bar_surface)
     menu_surface = [None]
     cr_menu = [None]
@@ -504,7 +525,9 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             print('extension %s failed: %s' % (broken['id'], broken['error']),
                   file=sys.stderr)
     system_apps = []
-    for label, program in (('Terminal', '/usr/bin/xterm'), ('Files', '/usr/bin/dev-files'), ('Edit', '/usr/bin/dev-edit')):
+    for label, program in (('Terminal', '/usr/bin/xterm'), ('Files', '/usr/bin/dev-files'),
+                           ('Edit', '/usr/bin/dev-edit'), ('Web', '/usr/bin/dev-web'),
+                           ('Music', '/usr/bin/dev-music')):
         if Path(program).is_file():
             system_apps.append({'kind': 'app', 'name': program, 'label': label,
                                 'comment': 'system application', 'categories': ['System'],
@@ -530,6 +553,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     locked = [bool(os.environ.get('DEVOS_LOCK'))]
     lock_mode = ['lock']
     lock_input = ['']
+    narrator = bool(settings.get('accessibility.narrator'))
 
     def hidden(section):
         return bool(host and section in host.hidden)
@@ -566,7 +590,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         return found
 
     def place_menu():
-        geometry = menu_geometry(width, height, len(entries), consent is not None)
+        geometry = menu_geometry(width, height, len(entries), consent is not None,
+                                bar_height=bar_height)
         api['move_resize'](display, menu, geometry['x'], geometry['y'],
                            geometry['width'], geometry['height'])
         menu_surface_for(geometry['width'], geometry['height'])
@@ -634,30 +659,33 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         # Start button per the reference SVG: dark rounded rect outlined in
         # green, vector >_ glyph, white DEVOS lettering, then a separator.
         hovered = hover[0] == 'menu'
-        start_r = dev_theme.corner_radius(dev_gui.CORNERS, 'start', PILL_WIDTH, BAR_HEIGHT - 14)
+        start_r = dev_theme.corner_radius(dev_gui.CORNERS, 'start', PILL_WIDTH,
+                                          bar_height - 14 * scale)
         cairo.set_rgba(cr_bar, *DESIGN['button'], 1.0)
-        cairo.rounded(cr_bar, PILL_X, 7, PILL_WIDTH, BAR_HEIGHT - 14, start_r)
+        cairo.rounded(cr_bar, PILL_X, 7 * scale, PILL_WIDTH, bar_height - 14 * scale, start_r)
         cairo.fill(cr_bar)
         cairo.set_rgba(cr_bar, *DESIGN['green'], 1.0 if hovered else 0.85)
         cairo.set_line_width(cr_bar, 1.5)
-        cairo.rounded(cr_bar, PILL_X + 0.75, 7.75, PILL_WIDTH - 1.5, BAR_HEIGHT - 15.5,
+        cairo.rounded(cr_bar, PILL_X + 0.75, 7.75 * scale, PILL_WIDTH - 1.5,
+                      bar_height - 14 * scale - 1.5,
                       max(0.0, start_r - 0.75))
         cairo.stroke(cr_bar)
-        dev_theme.draw_icon(cairo, cr_bar, dev_gui.ICONS['start'], PILL_X, 7,
+        dev_theme.draw_icon(cairo, cr_bar, dev_gui.ICONS['start'], PILL_X, 7 * scale,
                             DESIGN['green'], dev_gui.THEME_COLORS, 1.5)
-        text(cr_bar, 'DEVOS', PILL_X + PILL_WIDTH * 0.355, 25.9, DESIGN['white'], 16.0, True)
+        text(cr_bar, 'DEVOS', PILL_X + PILL_WIDTH * 0.355, 25.9 * scale,
+             DESIGN['white'], 16.0 * scale, True)
         separator_x = MENU_END + SEPARATOR_OFF + 0.5
         cairo.set_rgba(cr_bar, *DESIGN['sep'], 1.0)
         cairo.set_line_width(cr_bar, 1.5)
         cairo.new_sub_path(cr_bar)
-        cairo.line_to(cr_bar, separator_x, 10)
-        cairo.line_to(cr_bar, separator_x, BAR_HEIGHT - 10)
+        cairo.line_to(cr_bar, separator_x, 10 * scale)
+        cairo.line_to(cr_bar, separator_x, bar_height - 10 * scale)
         cairo.stroke(cr_bar)
         # Pinned app icons after the pill: monogram, running dot, active line.
         tasks = clients()
         running, active = pinned_states(pinned, tasks)
         for index, item in enumerate(() if hidden('pinned') else pinned):
-            x, y = icons_left + index * (PIN_SIZE + PIN_GAP), 6
+            x, y = icons_left + index * (PIN_SIZE + PIN_GAP), 6 * scale
             hovered = hover[0] == ('app', index)
             cairo.set_rgba(cr_bar, 1.0, 1.0, 1.0,
                            0.12 if index == active else 0.08 if hovered else 0.04)
@@ -666,7 +694,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                                                   PIN_SIZE - 1))
             cairo.fill(cr_bar)
             glyph = monogram(item)
-            text(cr_bar, glyph, x + PIN_SIZE / 2 - measure(glyph, 13.0, True) / 2, y + 18.5,
+            text(cr_bar, glyph, x + PIN_SIZE / 2 - measure(glyph, 13.0, True) / 2,
+                 y + 18.5 * scale,
                  DESIGN['white'] if index == active or hovered else DESIGN['gray'], 13.0, True)
             if index == active:
                 cairo.set_rgba(cr_bar, *DESIGN['blue'], 1.0)
@@ -683,7 +712,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         clock = time_text(settings=settings)
         date = date_text(settings=settings)
         right = width - CLOCK_PAD
-        time_width, date_width = measure(clock, 13.0, True), measure(date, 8.5)
+        time_size, date_size = scaled(13.0, scale), scaled(8.5, scale)
+        time_width, date_width = measure(clock, time_size, True), measure(date, date_size)
         clock_width = 0
         override = host.clock_override if host else None
         if hidden('clock'):
@@ -691,41 +721,42 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         elif override:
             clock_width = override['width']
             paint_extension(override['draw'], right - clock_width, 0, clock_width,
-                            BAR_HEIGHT, override['ext'] + ':clock')
+                            bar_height, override['ext'] + ':clock')
         else:
             clock_width = max(time_width, date_width)
-            text(cr_bar, clock, right - time_width, 18, DESIGN['white'], 13.0, True)
-            text(cr_bar, date, right - date_width, 31, DESIGN['gray'], 8.5)
+            text(cr_bar, clock, right - time_width, 18 * scale, DESIGN['white'],
+                 time_size, True)
+            text(cr_bar, date, right - date_width, 31 * scale, DESIGN['gray'], date_size)
         separator = right - clock_width - 14 + 0.5
         cairo.set_rgba(cr_bar, *DESIGN['sep'], 1.0)
         cairo.set_line_width(cr_bar, 1)
         cairo.new_sub_path(cr_bar)
-        cairo.line_to(cr_bar, separator, 10)
-        cairo.line_to(cr_bar, separator, BAR_HEIGHT - 10)
+        cairo.line_to(cr_bar, separator, 10 * scale)
+        cairo.line_to(cr_bar, separator, bar_height - 10 * scale)
         cairo.stroke(cr_bar)
         draw_icon = dev_theme.draw_icon
         colors = dev_gui.THEME_COLORS
         state, detail = network_state()
         charge, charging = battery_state()
         if not hidden('tray'):
-            draw_icon(cairo, cr_bar, dev_gui.ICONS['wifi'], separator - 32, 12,
+            draw_icon(cairo, cr_bar, dev_gui.ICONS['wifi'], separator - 32, 12 * scale,
                       DESIGN['green'] if state == 'online' else DESIGN['gray'],
                       colors, 1.4)
-            text(cr_bar, detail, separator - 190, 24, DESIGN['gray'], 9.0)
-            draw_icon(cairo, cr_bar, dev_gui.ICONS['volume'], separator - 52, 12,
+            text(cr_bar, detail, separator - 190, 24 * scale, DESIGN['gray'], 9.0 * scale)
+            draw_icon(cairo, cr_bar, dev_gui.ICONS['volume'], separator - 52, 12 * scale,
                       DESIGN['gray'], colors, 1.4)
-            draw_icon(cairo, cr_bar, dev_gui.ICONS['bell'], separator - 72, 12,
+            draw_icon(cairo, cr_bar, dev_gui.ICONS['bell'], separator - 72, 12 * scale,
                       DESIGN['gray'], colors, 1.4)
             if charge is not None:
                 text(cr_bar, ('+' if charging else '') + str(charge) + '%',
-                     separator - 168, 24, DESIGN['gray'], 9.0)
+                     separator - 168, 24 * scale, DESIGN['gray'], 9.0 * scale)
         tray_right[0] = None
         if host and host.tray:
             tray_right[0] = separator - TRAY_LEFT
             for index, item in enumerate(host.tray):
                 icon = item['icon'] if not isinstance(item['icon'], str)                     else dev_gui.ICONS[item['icon']]
                 dev_theme.draw_icon(cairo, cr_bar, icon,
-                                    tray_right[0] - TRAY_PITCH * index - TRAY_SIZE, 12,
+                                    tray_right[0] - TRAY_PITCH * index - TRAY_SIZE, 12 * scale,
                                     colors[item['color']], colors, 1.4)
         widget_end[0] = MENU_END + SEPARATOR_OFF + 4
         if pinned and not hidden('pinned'):
@@ -741,9 +772,9 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
 
             def overflow_marker(x):
                 cairo.set_rgba(cr_bar, *DESIGN['red'], 0.9)
-                cairo.rounded(cr_bar, x, 7, 14, BAR_HEIGHT - 14, 4)
+                cairo.rounded(cr_bar, x, 7 * scale, 14, bar_height - 14 * scale, 4)
                 cairo.fill(cr_bar)
-                text(cr_bar, '!', x + 5, 25, DESIGN['white'], 11.5, True)
+                text(cr_bar, '!', x + 5, 25 * scale, DESIGN['white'], 11.5, True)
 
             base = separator - TRAY_LEFT - TRAY_PITCH * len(host.tray)
             right = [(index, widget) for index, widget in enumerate(host.widgets)
@@ -757,7 +788,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                     warn_dropped(widget)
                     continue
                 base -= fitted
-                paint_extension(widget['draw'], base, 0, fitted, BAR_HEIGHT,
+                paint_extension(widget['draw'], base, 0, fitted, bar_height,
                                 widget['ext'] + ':' + widget['id'])
                 widget_zones[0].append((base, base + fitted, index))
                 base -= dev_extensions.ZONE_GAP
@@ -773,7 +804,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                     dropped += 1
                     warn_dropped(widget)
                     continue
-                paint_extension(widget['draw'], cursor, 0, fitted, BAR_HEIGHT,
+                paint_extension(widget['draw'], cursor, 0, fitted, bar_height,
                                 widget['ext'] + ':' + widget['id'])
                 widget_zones[0].append((cursor, cursor + fitted, index))
                 cursor += fitted + dev_extensions.ZONE_GAP
@@ -866,7 +897,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     def panel_window(handle):
         """Create (once) the override-redirect window behind a panel."""
         spec = handle.spec
-        y = height - BAR_HEIGHT - spec['height'] - 8
+        y = height - bar_height - spec['height'] - 8
         info = dev_gui.VisualInfo()
         visual = default_visual
         if shots is None and api['match_visual'](display, 0, 32, 4, c.byref(info)):
@@ -951,7 +982,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
 
     api['map'](display, bar)
     api['raise_window'](display, bar)          # no WM: map order is not z-order
-    api['move'](display, bar, 0, height - BAR_HEIGHT)  # openbox docks float otherwise
+    api['move'](display, bar, 0, height - bar_height)  # openbox docks float otherwise
     running = True
     started = time.monotonic()
     captured = shots is None
@@ -972,7 +1003,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             except BlockingIOError:
                 pass
             toasts[:] = toasts[-4:]
-        geometry = menu_geometry(width, height, len(entries), consent is not None)
+        geometry = menu_geometry(width, height, len(entries), consent is not None,
+                                bar_height=bar_height)
         if desktop_window:
             paint_desktop()
         if locked[0] and not lock_mapped[0]:
@@ -1021,9 +1053,15 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 position = event.button
                 tray_count = len(host.tray) if host else 0
                 if kind == 6 and not locked[0]:
-                    hover[0] = hover_key('bar', position.x, position.y, width=width,
-                                         app_count=len(pinned), tray_right=tray_right[0],
-                                         tray_count=tray_count)
+                    target = hover_key('bar', position.x, position.y, width=width,
+                                       app_count=len(pinned), tray_right=tray_right[0],
+                                       tray_count=tray_count)
+                    if narrator and target is not None and target != hover[0]:
+                        message = narrator_text(target, [item['label'] for item in pinned])
+                        toasts.append({'title': 'Screen reader', 'body': message,
+                                       'at': time.monotonic()})
+                        print('[narrator] %s' % message, flush=True)
+                    hover[0] = target
                 elif kind == 4:
                     for panel_handle in (host.panels if host else []):
                         if panel_handle.slot['visible']:
@@ -1096,7 +1134,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                         open_menu(False)
                     elif choice == 'cancel':
                         consent = None
-                        draw_menu(menu_geometry(width, height, len(items), False))
+                        draw_menu(menu_geometry(width, height, len(items), False, bar_height=bar_height))
                     elif index is not None and index >= 0 and not consent:
                         entry = entries[index]
                         if entry.get('kind') in ('lock', 'suspend'):
@@ -1124,16 +1162,17 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                                       % (entries[index]['name'], error), file=sys.stderr)
                         elif entries[index].get('kind') != 'app':
                             consent = entries[index]
-                            draw_menu(menu_geometry(width, height, len(entries), True))
+                            draw_menu(menu_geometry(width, height, len(entries), True, bar_height=bar_height))
         if not captured and time.monotonic() - started >= 1.0:
             captured = True
             api['sync'](display, 0)
-            screenshot(x, api, display, bar, shots[0], width, BAR_HEIGHT)
+            screenshot(x, api, display, bar, shots[0], width, bar_height)
             if not menu_open:
                 open_menu(True)
             consent = apps[0] if apps else None
             place_menu()
-            geometry = menu_geometry(width, height, len(entries), consent is not None)
+            geometry = menu_geometry(width, height, len(entries), consent is not None,
+                                bar_height=bar_height)
             draw_menu(geometry)
             # XWayland needs a compositor round trip after a resize before the
             # window has a capturable surface again; redraw onto the settled

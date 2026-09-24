@@ -177,6 +177,8 @@ def connect():
         'move_resize': bind('XMoveResizeWindow', c.c_int, c.c_void_p, c.c_ulong, c.c_int,
                             c.c_int, c.c_uint, c.c_uint),
         'move': bind('XMoveWindow', c.c_int, c.c_void_p, c.c_ulong, c.c_int, c.c_int),
+        'warp': bind('XWarpPointer', None, c.c_void_p, c.c_ulong, c.c_ulong,
+                     c.c_int, c.c_int, c.c_uint, c.c_uint, c.c_int, c.c_int),
         'store_name': bind('XStoreName', c.c_int, c.c_void_p, c.c_ulong, c.c_char_p),
         'select_input': bind('XSelectInput', c.c_int, c.c_void_p, c.c_ulong, c.c_long),
         'map': bind('XMapWindow', c.c_int, c.c_void_p, c.c_ulong),

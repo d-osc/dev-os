@@ -31,7 +31,24 @@ install -D -m 0755 "$project/tools/dev_greeter.py" "$target/usr/bin/dev-greeter"
 install -D -m 0755 "$project/scripts/devos-session" "$target/usr/bin/devos-session"
 install -D -m 0755 "$project/tools/dev_files.py" "$target/usr/bin/dev-files"
 install -D -m 0755 "$project/tools/dev_edit.py" "$target/usr/bin/dev-edit"
+install -D -m 0755 "$project/tools/dev_web.py" "$target/usr/bin/dev-web"
+install -D -m 0755 "$project/tools/dev_music.py" "$target/usr/bin/dev-music"
+install -D -m 0755 "$project/tools/dev_pointer.py" "$target/usr/bin/dev-pointer"
 install -D -m 0755 "$project/scripts/dev-notify" "$target/usr/bin/dev-notify"
+mkdir -p "$target/etc/skel/Music"
+python3 - "$target/etc/skel/Music/chime.wav" <<'PY'
+import math, struct, sys, wave
+with wave.open(sys.argv[1], 'wb') as out:
+    out.setnchannels(1)
+    out.setsampwidth(2)
+    out.setframerate(44100)
+    frames = bytearray()
+    for index in range(17640):
+        fade = min(1.0, (17640 - index) / 4410.0)
+        sample = int(24000 * fade * math.sin(index * 440.0 * 2 * math.pi / 44100.0))
+        frames += struct.pack('<h', sample)
+    out.writeframes(bytes(frames))
+PY
 # The xorg-server package ships S40xorg, which pre-starts "Xorg :0.0" at
 # boot; the desktop session must own the server instead (xinit per tty1),
 # otherwise xinit collides with the already-active display and respawns.

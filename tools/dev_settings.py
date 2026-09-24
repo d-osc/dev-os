@@ -20,8 +20,11 @@ MODES = ('desktop', 'server')
 
 DEFAULTS = {'theme': 'dev-dark', 'clock.hour12': False, 'clock.showSeconds': True,
             'clock.dateFormat': '%b %d, %Y', 'font.family': 'DejaVu Sans',
-            'desktop.background': 'none', 'input.thai': False}
-BOOLEANS = ('clock.hour12', 'clock.showSeconds', 'input.thai')
+            'desktop.background': 'none', 'input.thai': False,
+            'display.scale': 1.0, 'accessibility.narrator': False}
+BOOLEANS = ('clock.hour12', 'clock.showSeconds', 'input.thai',
+            'accessibility.narrator')
+SCALES = (0.75, 1.0, 1.25, 1.5, 2.0)
 
 
 def _printable(value, limit):
@@ -42,6 +45,10 @@ def validate(raw):
         if key in BOOLEANS:
             if not isinstance(value, bool):
                 raise ValueError('Setting %s must be a boolean' % key)
+        elif key == 'display.scale':
+            if isinstance(value, bool) or value not in SCALES:
+                raise ValueError('Setting display.scale must be one of '
+                                 + ', '.join(str(item) for item in SCALES))
         elif not _printable(value, limits[key]):
             raise ValueError('Setting %s must be 1..%d printable characters' % (key, limits[key]))
     return raw

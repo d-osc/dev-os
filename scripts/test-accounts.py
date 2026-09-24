@@ -24,7 +24,7 @@ def hashed(user):
                           capture_output=True, check=True).stdout.strip()
 
 users = out / 'vm-users.txt'
-users.write_text(f'dev 1000 dev 1000 {hashed("dev")} /home/dev /bin/sh wheel Dev OS tester\n')
+users.write_text(f'dev 1000 dev 1000 {hashed("dev")} /home/dev /bin/sh wheel,audio Dev OS tester\n')
 with config.open('a') as f:
     f.write('\nBR2_TARGET_ENABLE_ROOT_LOGIN=y\n')
     # Buildroot includes .config from make: literal dollars must be doubled.
