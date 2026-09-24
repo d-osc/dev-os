@@ -155,12 +155,12 @@ def authenticate(name, password, shadow_text=None):
     hash_ = shadow_hashes(text).get(name, '')
     if not hash_.startswith('$'):
         return False                        # empty, locked or crypt(3)-unsupported
-    for library in ('libcrypt.so.1', 'libc.so.6'):
+    for library in ('libcrypt.so.2', 'libcrypt.so.1', 'libc.so.6'):
         try:
             lib = c.CDLL(library)
-        except OSError:
+            crypt = lib.crypt
+        except (OSError, AttributeError):   # no crypt(3) in this libc at all
             continue
-        crypt = lib.crypt
         crypt.restype = c.c_char_p
         crypt.argtypes = [c.c_char_p, c.c_char_p]
         return crypt(password.encode(), hash_.encode()) == hash_.encode()
@@ -344,10 +344,14 @@ def run(shot=None, extension_dirs=None):
             api['next_event'](display, c.byref(event))
             kind = event.any.type
             if kind == 2:                                    # KeyPress
-                api['lookup_string'](display, c.byref(event.key), buffer, 16,
+                api['lookup_string'](c.byref(event.key), buffer, 16,
                                      c.byref(keysym), None)
                 char = buffer.value.decode('ascii', 'ignore')[:1]
                 symbol = keysym.value
+                if symbol == 0xFF09:                           # Tab
+                    user_entry.focused = not user_entry.focused
+                    pass_entry.focused = not pass_entry.focused
+                    continue
                 target = pass_entry if pass_entry.focused else user_entry
                 outcome = target.feed(symbol, char)
                 if outcome == 'submit' and target is user_entry:
