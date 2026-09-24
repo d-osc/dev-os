@@ -64,10 +64,14 @@ def control_at(x, y, width, height=TITLE_HEIGHT):
     return None
 
 
-def toggle_maximize(current, screen, stashed):
-    """(next geometry, stashed previous) for a maximize/restore click."""
+def toggle_maximize(current, screen, stashed, strut=0):
+    """(next geometry, stashed previous) for a maximize/restore click.
+
+    A maximized window fills the screen above the taskbar strut; restoring
+    returns the exact previous geometry."""
     if stashed is None:
-        return {'x': 0, 'y': 0, 'width': screen[0], 'height': screen[1]}, dict(current)
+        return ({'x': 0, 'y': 0, 'width': screen[0],
+                 'height': max(screen[1] - strut, 200)}, dict(current))
     return dict(stashed), None
 
 
@@ -117,9 +121,17 @@ class XClient(c.Structure):
                 ('format', c.c_int), ('data', c.c_long * 5)]
 
 
+class XConfigure(c.Structure):
+    _fields_ = [('type', c.c_int), ('serial', c.c_ulong), ('send_event', c.c_int),
+                ('display', c.c_void_p), ('event', c.c_ulong), ('window', c.c_ulong),
+                ('x', c.c_int), ('y', c.c_int), ('width', c.c_int), ('height', c.c_int),
+                ('border_width', c.c_int), ('above', c.c_ulong),
+                ('override_redirect', c.c_int)]
+
+
 class XEvent(c.Union):
     _fields_ = [('any', XAny), ('button', XButton), ('key', XKey), ('client', XClient),
-                ('pad', c.c_long * 24)]
+                ('configure', XConfigure), ('pad', c.c_long * 24)]
 
 
 class XImage(c.Structure):
@@ -207,6 +219,12 @@ def connect():
                              c.c_long, c.c_long, c.c_int, c.c_void_p, c.c_void_p, c.c_void_p,
                              c.c_void_p, c.c_void_p, c.POINTER(c.c_void_p)),
         'raise_window': bind('XRaiseWindow', c.c_int, c.c_void_p, c.c_ulong),
+        'x_free': bind('XFree', c.c_int, c.c_void_p),
+        'get_geometry': bind('XGetGeometry', c.c_int, c.c_void_p, c.c_ulong,
+                             c.POINTER(c.c_ulong), c.POINTER(c.c_int),
+                             c.POINTER(c.c_int), c.POINTER(c.c_uint),
+                             c.POINTER(c.c_uint), c.POINTER(c.c_uint),
+                             c.POINTER(c.c_uint)),
         'set_input_focus': bind('XSetInputFocus', c.c_int, c.c_void_p, c.c_ulong, c.c_int, c.c_long),
         'iconify': bind('XIconifyWindow', c.c_int, c.c_void_p, c.c_int, c.c_ulong),
         'grab_pointer': bind('XGrabPointer', c.c_int, c.c_void_p, c.c_ulong, c.c_int, c.c_uint,
@@ -596,7 +614,7 @@ class Window:
         api['set_protocols'](display, self.window, c.byref(delete), 1)
         api['select_input'](display, self.window,
                             (1 << 0) | (1 << 1) | (1 << 15) | (1 << 2)
-                            | (1 << 3) | (1 << 6))
+                            | (1 << 3) | (1 << 6) | (1 << 17))
         self.surface = None
         self.cr = None
         self.buttons, self.labels, self.entries = [], [], []
@@ -637,14 +655,42 @@ class Window:
         return control_at(x, y, self.width) if self.kind == 'toplevel' else None
 
     def _minimize(self):
-        if not self.tk.api['iconify'](self.tk.display, 0, self.window):
-            # No window manager to iconify through: hide the window instead.
-            self.tk.api['unmap'](self.tk.display, self.window)
+        # Withdraw rather than iconify: this openbox ignores external
+        # deiconify requests for iconic windows, but anyone may map a
+        # withdrawn window back — the taskbar button does exactly that.
+        self.tk.api['unmap'](self.tk.display, self.window)
+
+    def _taskbar_strut(self, default=44):
+        """The shell's published bottom strut, so maximize clears the bar."""
+        try:
+            api, display = self.tk.api, self.tk.display
+            root = api['root_window'](display, 0)
+            atom = api['atom'](display, b'_NET_WM_STRUT', 1)
+            if not atom:
+                return default
+            actual, format_, count, remaining, data = (c.c_ulong(), c.c_int(),
+                                                       c.c_ulong(), c.c_ulong(),
+                                                       c.c_void_p())
+            result = api['get_property'](display, root, atom, 0, 4, 0, 0,
+                                         c.byref(actual), c.byref(format_),
+                                         c.byref(count), c.byref(remaining),
+                                         c.byref(data))
+            if result != 0 or not count.value or format_.value != 32:
+                return default
+            try:
+                struts = (c.c_ulong * count.value).from_address(data.value)
+                return int(struts[3]) or default     # bottom strut
+            finally:
+                if data.value:
+                    self.tk.api['x_free'](data.value)
+        except Exception:
+            return default
 
     def _maximize(self):
         current = {'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height}
         target, stashed = toggle_maximize(current, (self.tk.width, self.tk.height),
-                                          self._stashed)
+                                          self._stashed,
+                                          strut=self._taskbar_strut())
         self._stashed = stashed
         self.place(target['x'], target['y'], target['width'], target['height'])
 
@@ -741,7 +787,7 @@ class Window:
             rows = decode_rows(XImage.from_address(pointer))
             dev_gui.write_png(path, width or self.width, height or self.height, rows)
         finally:
-            self.tk.x.XFree(pointer)
+            self.tk.api['x_free'](pointer)
 
     def close(self):
         self.tk.api['unmap'](self.tk.display, self.window)
@@ -796,6 +842,20 @@ class Window:
                             if item.focused and not handled:
                                 item.feed(keysym.value, character)
                         self._dirty = True
+                elif kind == 12:
+                    # Expose: the window (re)appeared — repaint what shows.
+                    if event.any.window == self.window:
+                        self._dirty = True
+                elif kind == 22:
+                    # ConfigureNotify: follow WM-driven resizes (maximize,
+                    # frame adjustments) so the surface always matches.
+                    if event.configure.window == self.window:
+                        size = (event.configure.width, event.configure.height)
+                        if size != (self.width, self.height):
+                            self.width, self.height = size
+                            self.x, self.y = event.configure.x, event.configure.y
+                            self._surface_for(*size)
+                            self._dirty = True
                 elif kind in (4, 5, 6):
                     button_event = event.button
                     if button_event.window != self.window:
@@ -809,6 +869,7 @@ class Window:
                             if item.motion(x, y):
                                 self._dirty = True
                         if self._drag and button_event.state & 0x100:
+                            # Move only: X11 carries the pixels, no repaint.
                             self.x, self.y = self.x + x - self._drag[0], self.y + y - self._drag[1]
                             self._drag = (x, y)
                             api['move'](self.tk.display, self.window, self.x, self.y)
@@ -840,12 +901,13 @@ class Window:
                             item.press(x, y)
                         if self.on_click and not self._drag:
                             self.on_click(x, y)
+                        self._dirty = True
                     elif kind == 5:
                         self._drag = None
                         for item in self.buttons:
                             if item.release(x, y):
                                 self._dirty = True
-                    self._dirty = True
+                        self._dirty = True
             now = time.monotonic()
             if tick and now - last_tick >= interval:
                 last_tick = now

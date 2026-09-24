@@ -160,6 +160,39 @@ def window_for(item, clients):
     return None
 
 
+def living_windows(cached, listed, probe):
+    """(iconified, dead) among cached windows missing from the client list.
+
+    Openbox drops iconified windows from _NET_CLIENT_LIST, so the shell
+    probes each remembered window: one that still answers geometry is
+    iconified (keep a restore button), one that does not is gone."""
+    iconified, dead = [], []
+    for window, title in cached.items():
+        if window in listed:
+            continue
+        if probe(window):
+            iconified.append((window, title))
+        else:
+            dead.append(window)
+    return iconified, dead
+
+
+def taskbar_entries(pinned, clients, limit=10):
+    """Taskbar buttons: pinned apps plus every running window no pin covers.
+
+    A running window always gets a clickable button, so minimizing one can
+    always be undone from the taskbar."""
+    entries = [dict(item, window=window_for(item, clients)) for item in pinned]
+    claimed = {entry['window'] for entry in entries if entry['window']}
+    for title, window in clients:
+        if window not in claimed and len(entries) < limit:
+            entries.append({'kind': 'app', 'name': title, 'label': title[:18],
+                            'comment': 'running window', 'categories': ['System'],
+                            'permissions': [], 'window': window})
+            claimed.add(window)
+    return entries
+
+
 def pinned_states(items, clients):
     """(running flags, first running index) for the pinned icons."""
     windows = [window_for(item, clients) for item in items]
@@ -258,7 +291,7 @@ def screenshot(x, api, display, window, path, width, height):
         rows = dev_gui.decode_rows(dev_gui.XImage.from_address(pointer))
         dev_gui.write_png(path, width, height, rows)
     finally:
-        x.XFree(pointer)
+        api['x_free'](pointer)
 
 
 def property_windows(x, api, display, root, name):
@@ -275,7 +308,7 @@ def property_windows(x, api, display, root, name):
     try:
         return list((c.c_ulong * count.value).from_address(data.value))
     finally:
-        x.XFree(data.value)
+        api['x_free'](data.value)
 
 
 def toast_layout(messages, now, width, height):
@@ -574,6 +607,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     lock_mode = ['lock']
     lock_input = ['']
     narrator = bool(settings.get('accessibility.narrator'))
+    taskbar_view = [list(pinned)]     # pins + running windows, refreshed per paint
 
     def toggle_layout():
         """Flip the desktop keyboard layout (English <-> Thai Kedmanee)."""
@@ -613,15 +647,51 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         finally:
             cairo.restore(cr_bar)
 
+    known_windows = {}
+
+    def alive(window):
+        root = c.c_ulong()
+        gx, gy = c.c_int(), c.c_int()
+        gw, gh, border, depth = c.c_uint(), c.c_uint(), c.c_uint(), c.c_uint()
+        return bool(api['get_geometry'](display, window, c.byref(root),
+                                        c.byref(gx), c.byref(gy), c.byref(gw),
+                                        c.byref(gh), c.byref(border),
+                                        c.byref(depth)))
+
     def clients():
         found = []
+        listed = set()
         for window in property_windows(x, api, display, root_window, '_NET_CLIENT_LIST'):
             name = c.c_char_p()
             if window not in (bar, menu) and api['fetch_name'](display, window, c.byref(name)) \
                     and name.value:
-                found.append((name.value.decode('utf-8', 'replace'), window))
-                x.XFree(name)          # free the pointer X gave, not a bytes copy
+                title = name.value.decode('utf-8', 'replace')
+                found.append((title, window))
+                known_windows[window] = title
+                listed.add(window)
+                # Free the pointer X returned, not the bytes copy above.
+                raw = c.cast(c.byref(name), c.POINTER(c.c_void_p)).contents.value
+                api['x_free'](raw)
+        iconified, dead = living_windows(known_windows, listed, alive)
+        for window in dead:
+            del known_windows[window]
+        found.extend((title, window) for window, title in iconified)
         return found
+
+    def activate_window(window):
+        """Ask the WM to raise and deiconify a window (EWMH
+        _NET_ACTIVE_WINDOW); plain XMapWindow is ignored for iconic
+        windows."""
+        atom = api['atom'](display, b'_NET_ACTIVE_WINDOW', 1)
+        message = dev_gui.XEvent()
+        message.client.type = 33
+        message.client.window = window
+        message.client.message_type = atom
+        message.client.format = 32
+        message.client.data[0] = 2              # source: pager/other client
+        api['send_event'](display, root_window, 0,
+                          (1 << 20) | (1 << 19), c.byref(message))
+        api['flush'](display)
 
     def place_menu():
         geometry = menu_geometry(width, height, len(entries), consent is not None,
@@ -715,14 +785,17 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         cairo.line_to(cr_bar, separator_x, 10 * scale)
         cairo.line_to(cr_bar, separator_x, bar_height - 10 * scale)
         cairo.stroke(cr_bar)
-        # Pinned app icons after the pill: monogram, running dot, active line.
+        # Taskbar buttons after the pill: pinned apps plus every running
+        # window, so a minimized window always has a restore button.
         tasks = clients()
-        running, active = pinned_states(pinned, tasks)
-        for index, item in enumerate(() if hidden('pinned') else pinned):
+        buttons = taskbar_entries(pinned, tasks)
+        taskbar_view[0] = buttons
+        for index, item in enumerate(() if hidden('pinned') else buttons):
             x, y = icons_left + index * (PIN_SIZE + PIN_GAP), 6 * scale
             hovered = hover[0] == ('app', index)
+            window = item.get('window')
             cairo.set_rgba(cr_bar, 1.0, 1.0, 1.0,
-                           0.12 if index == active else 0.08 if hovered else 0.04)
+                           0.12 if window else 0.08 if hovered else 0.04)
             cairo.rounded(cr_bar, x + 0.5, y + 0.5, PIN_SIZE - 1, PIN_SIZE - 1,
                           dev_theme.corner_radius(dev_gui.CORNERS, 'icon', PIN_SIZE - 1,
                                                   PIN_SIZE - 1))
@@ -730,18 +803,14 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
             glyph = monogram(item)
             text(cr_bar, glyph, x + PIN_SIZE / 2 - measure(glyph, 13.0, True) / 2,
                  y + 18.5 * scale,
-                 DESIGN['white'] if index == active or hovered else DESIGN['gray'], 13.0, True)
-            if index == active:
+                 DESIGN['white'] if window or hovered else DESIGN['gray'], 13.0, True)
+            if window:
                 cairo.set_rgba(cr_bar, *DESIGN['blue'], 1.0)
                 cairo.set_line_width(cr_bar, 2)
                 cairo.new_sub_path(cr_bar)
                 cairo.line_to(cr_bar, x + 8, y + PIN_SIZE - 4)
                 cairo.line_to(cr_bar, x + PIN_SIZE - 8, y + PIN_SIZE - 4)
                 cairo.stroke(cr_bar)
-            elif running[index]:
-                cairo.set_rgba(cr_bar, *DESIGN['white'], 0.8)
-                cairo.arc(cr_bar, x + PIN_SIZE / 2, y + PIN_SIZE - 4, 1.7, 0, 6.2832)
-                cairo.fill(cr_bar)
         # Two-line clock (or an extension override), separator, tray glyphs.
         clock = time_text(settings=settings)
         date = date_text(settings=settings)
@@ -1105,7 +1174,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 tray_count = len(host.tray) if host else 0
                 if kind == 6 and not locked[0]:
                     target = hover_key('bar', position.x, position.y, width=width,
-                                       app_count=len(pinned), tray_right=tray_right[0],
+                                       app_count=len(taskbar_view[0]), tray_right=tray_right[0],
                                        tray_count=tray_count, kb_right=kb_right[0])
                     if narrator and target is not None and target != hover[0]:
                         message = narrator_text(target, [item['label'] for item in pinned])
@@ -1117,7 +1186,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                     for panel_handle in (host.panels if host else []):
                         if panel_handle.slot['visible']:
                             panel_handle.slot['request'] = 'hide'
-                    hit, index = bar_hit(width, position.x, len(pinned),
+                    hit, index = bar_hit(width, position.x, len(taskbar_view[0]),
                                          tray_right[0], tray_count, kb_right[0])
                     if hit is None and host:
                         for start, end, widget_index in widget_zones[0]:
@@ -1139,10 +1208,14 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                         toggle_layout()
                     elif hit == 'menu':
                         open_menu(not menu_open)
-                    elif hit == 'app' and index is not None and index < len(pinned):
-                        target = pinned[index]
-                        window = window_for(target, tasks)
+                    elif hit == 'app' and index is not None                             and index < len(taskbar_view[0]):
+                        target = taskbar_view[0][index]
+                        window = target.get('window') or window_for(target, tasks)
                         if window:
+                            # A withdrawn window maps back from anyone;
+                            # iconic ones only the WM may wake.
+                            api['map'](display, window)
+                            activate_window(window)
                             api['raise_window'](display, window)
                             api['set_input_focus'](display, window, 1, 0)
                         else:

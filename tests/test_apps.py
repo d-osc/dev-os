@@ -225,6 +225,43 @@ class SettingsUpdateUser(unittest.TestCase):
             self.assertEqual(settings.load(path)['display.scale'], 1.0)
 
 
+class LivingWindows(unittest.TestCase):
+    def test_probe_splits_iconified_from_dead(self):
+        cached = {11: 'Files', 12: 'Gone', 13: 'Web'}
+        listed = {13}                       # still managed; Files iconified
+        iconified, dead = shell.living_windows(cached, listed,
+                                               lambda window: window != 12)
+        self.assertEqual(iconified, [(11, 'Files')])
+        self.assertEqual(dead, [12])
+
+    def test_empty_when_everything_listed(self):
+        iconified, dead = shell.living_windows({11: 'A'}, {11}, lambda _: True)
+        self.assertEqual((iconified, dead), ([], []))
+
+
+class TaskbarEntries(unittest.TestCase):
+    PIN = [{'kind': 'app', 'name': '/usr/bin/dev-files', 'label': 'Files',
+            'comment': 'c', 'categories': [], 'permissions': []}]
+
+    def test_running_windows_get_buttons_even_without_pins(self):
+        entries = shell.taskbar_entries([], [('Files', 11), ('Web', 12)])
+        self.assertEqual([entry['window'] for entry in entries], [11, 12])
+        self.assertEqual([entry['label'] for entry in entries], ['Files', 'Web'])
+
+    def test_pin_claims_its_window_no_duplicates(self):
+        entries = shell.taskbar_entries(self.PIN, [('Files', 11), ('Edit', 12)])
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0]['window'], 11)       # pin matched its window
+        self.assertEqual(entries[1]['label'], 'Edit')
+        self.assertEqual(entries[1]['window'], 12)
+
+    def test_long_titles_and_the_limit(self):
+        tasks = [('Window-' + str(index), 100 + index) for index in range(14)]
+        entries = shell.taskbar_entries([], tasks)
+        self.assertEqual(len(entries), 10)
+        self.assertEqual(entries[0]['label'], 'Window-0')
+
+
 class KeyboardBadge(unittest.TestCase):
     def test_kb_region_lands_before_the_clock(self):
         width = 1280

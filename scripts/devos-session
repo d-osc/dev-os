@@ -13,7 +13,7 @@ trap 'kill $OPENBOX_PID 2>/dev/null' TERM INT
 if [ ! -e "$HOME/.config/devos/wizard-done" ] && [ -x /usr/bin/dev-wizard ]; then
     /usr/bin/dev-wizard > /tmp/devos-wizard.log 2>&1 &
 fi
-/usr/bin/dev-shell &
+/usr/bin/dev-shell > /tmp/devos-shell.log 2>&1 &
 SHELL_PID=$!
 wait $SHELL_PID
 kill $OPENBOX_PID 2>/dev/null
