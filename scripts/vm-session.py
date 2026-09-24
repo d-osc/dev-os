@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """One serial session: log in as root and run every argument as a command."""
+import json
+import os
 import socket
 import sys
 import time
 
-PASSWORD = 'mSJlOJ51W6nbaiC83JRqybPv'
+for path in ('/home/ondev/src/dev-os-build/project/out/vm-credentials.json',
+             '/mnt/c/Users/ondev/Projects/dev-os/out/vm-credentials.json'):
+    if os.path.isfile(path):
+        PASSWORD = json.load(open(path))['root']
+        break
+else:
+    raise SystemExit('no vm-credentials.json found')
 
 
 def main():
