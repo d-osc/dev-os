@@ -1,6 +1,7 @@
 #!/bin/sh
-# Definitive: guest-side auth check via a script file (no quoting), then
-# the real GUI login, then capture whatever the screen shows.
+# Ubuntu-like login proof in one WSL session:
+#   login screen: card only, NO taskbar
+#   after GUI login: clean desktop + taskbar, NO stale card
 set -eu
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 SRC=/home/ondev/src/dev-os-build/project/out/buildroot/images
@@ -23,24 +24,35 @@ nohup setsid qemu-system-x86_64 -M pc -enable-kvm -cpu host -m 1024 \
     -monitor unix:"$VM/monitor.sock",server,nowait \
     > "$VM/qemu.log" 2>&1 < /dev/null &
 
-for tick in $(seq 1 24); do
+up=""
+for tick in $(seq 1 30); do
     sleep 10
-    (echo "screendump $VM/w.ppm"; sleep 0.4) | timeout 6 socat - UNIX-CONNECT:"$VM/monitor.sock" >/dev/null 2>&1 || true
+    (echo "screendump $VM/login.ppm"; sleep 0.4) | timeout 6 socat - UNIX-CONNECT:"$VM/monitor.sock" >/dev/null 2>&1 || true
     sleep 2
-    if [ -f "$VM/w.ppm" ] && python3 /mnt/c/Users/ondev/Projects/dev-os/scripts/vm-graphics-probe.py "$VM/w.ppm" 2>/dev/null; then
-        echo "[2] graphics at $((tick*10))s" >> "$OUT/final-login.log"
+    if [ -f "$VM/login.ppm" ] && python3 /mnt/c/Users/ondev/Projects/dev-os/scripts/vm-graphics-probe.py "$VM/login.ppm" 2>/dev/null; then
+        up=1
+        echo "[2] login screen at $((tick*10))s" >> "$OUT/final-login.log"
         break
     fi
 done
+[ -n "$up" ] || { echo "[!] NO GRAPHICS" >> "$OUT/final-login.log"; exit 1; }
 sleep 12
 
-python3 /mnt/c/Users/ondev/Projects/dev-os/scripts/vm-final-login.py >> "$OUT/final-login.log" 2>&1 || true
+python3 /mnt/c/Users/ondev/Projects/dev-os/scripts/vm-analyze.py "$VM/login.ppm" login >> "$OUT/final-login.log"
+echo "[3] login screen analyzed" >> "$OUT/final-login.log"
 
-sleep 22
-(echo "screendump $VM/login-desktop.ppm"; sleep 0.5) | timeout 6 socat - UNIX-CONNECT:"$VM/monitor.sock" >/dev/null 2>&1 || true
+python3 /mnt/c/Users/ondev/Projects/dev-os/scripts/vm-vnc-login-full.py >> "$OUT/final-login.log" 2>&1 || true
+sleep 25
+
+(echo "screendump $VM/desktop.ppm"; sleep 0.5) | timeout 6 socat - UNIX-CONNECT:"$VM/monitor.sock" >/dev/null 2>&1 || true
 sleep 8
-(echo "screendump $VM/login-desktop2.ppm"; sleep 0.5) | timeout 6 socat - UNIX-CONNECT:"$VM/monitor.sock" >/dev/null 2>&1 || true
-echo "[4] captured $(date +%H:%M:%S)" >> "$OUT/final-login.log"
-cp "$VM"/g-*.png "$VM"/login-*.ppm "$OUT/" 2>/dev/null || true
+(echo "screendump $VM/desktop2.ppm"; sleep 0.5) | timeout 6 socat - UNIX-CONNECT:"$VM/monitor.sock" >/dev/null 2>&1 || true
+python3 /mnt/c/Users/ondev/Projects/dev-os/scripts/vm-analyze.py "$VM/desktop2.ppm" desktop >> "$OUT/final-login.log" 2>&1 || true
+echo "[4] desktop analyzed $(date +%H:%M:%S)" >> "$OUT/final-login.log"
+
+timeout 60 python3 /mnt/c/Users/ondev/Projects/dev-os/scripts/vm-session-nopoweroff.py \
+    'ps w | grep -vE "grep|\[" | tail -4' >> "$OUT/final-login.log" 2>&1 || true
+
+cp "$VM"/login.ppm "$VM"/desktop*.ppm "$OUT/" 2>/dev/null || true
 pkill -9 qemu-system 2>/dev/null || true
 echo "[5] done" >> "$OUT/final-login.log"

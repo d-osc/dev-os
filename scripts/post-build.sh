@@ -19,6 +19,7 @@ install -D -m 0644 "$project/tools/dev_deploy.py" "$target/usr/lib/devos/dev_dep
 install -D -m 0644 "$project/tools/dev_gui.py" "$target/usr/lib/devos/dev_gui.py"
 install -D -m 0644 "$project/tools/dev_theme.py" "$target/usr/lib/devos/dev_theme.py"
 install -D -m 0644 "$project/tools/dev_settings.py" "$target/usr/lib/devos/dev_settings.py"
+install -D -m 0644 "$project/tools/dev_background.py" "$target/usr/lib/devos/dev_background.py"
 install -D -m 0644 "$project/tools/dev_extensions.py" "$target/usr/lib/devos/dev_extensions.py"
 install -D -m 0644 "$project/tools/ext-runner.js" "$target/usr/lib/devos/ext-runner.js"
 install -D -m 0644 "$project/examples/extensions/hello-js/manifest.json" "$target/usr/share/devos/extensions/devos.hello-js/manifest.json"

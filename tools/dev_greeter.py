@@ -180,6 +180,10 @@ def spawn_session(name, command=('/usr/bin/dev-shell',)):
     pid = os.fork()
     if pid == 0:
         try:
+            log = os.open('/tmp/devos-session.log',
+                          os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+            os.dup2(log, 1)
+            os.dup2(log, 2)
             if os.getuid() == 0:
                 os.initgroups(record.pw_name, record.pw_gid)
                 os.setgid(record.pw_gid)
@@ -271,6 +275,14 @@ def run(shot=None, extension_dirs=None):
             return
         set_status('Starting session for %s…' % name)
         draw()
+        # Cover the root first: without a window manager, unmap leaves the
+        # card's stale pixels behind (Ubuntu clears to the session instead).
+        root_surface = cairo.surface_create(display, root, visual,
+                                            width, height)
+        root_cr = cairo.create(root_surface)
+        cairo.set_rgba(root_cr, *dev_gui.PALETTE['bg'], 1.0)
+        cairo.paint(root_cr)
+        cairo.surface_flush(root_surface)
         api['unmap'](display, window)
         api['flush'](display)
         pid, authority = spawn_session(name)

@@ -338,7 +338,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     # on the root window itself cannot be captured and does not survive
     # exposes on every X server.
     desktop_window = desktop_surface = desktop_cr = None
-    if settings.get('desktop.background', 'none') != 'none':
+    if True:                                # always paint over stale pixels
         import dev_background
         desktop_window = api['create'](display, root_window, 0, 0, width, height,
                                        1, 0x0b0f16, 0x0b0f16)
@@ -463,6 +463,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         if state:
             place_menu()
             api['map'](display, menu)
+            api['raise_window'](display, menu)
             api['grab_pointer'](display, menu, 0, 1 << 2, 1, 1, 0, 0, 0)
         else:
             api['ungrab_pointer'](display, 0)
@@ -727,6 +728,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 if state is None:
                     state = panel_state[handle.spec['id']] = panel_window(handle)
                 api['map'](display, state['window'])
+                api['raise_window'](display, state['window'])
                 api['grab_pointer'](display, state['window'], 0, 1 << 2, 1, 1, 0, 0, 0)
                 handle.slot['visible'] = True
             elif request in ('hide', 'toggle') and handle.slot['visible'] and state:
@@ -768,6 +770,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         api['flush'](display)
 
     api['map'](display, bar)
+    api['raise_window'](display, bar)          # no WM: map order is not z-order
     running = True
     started = time.monotonic()
     captured = shots is None
