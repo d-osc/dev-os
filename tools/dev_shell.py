@@ -305,14 +305,21 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     width = api['display_width'](display, 0)
     height = api['display_height'](display, 0)
     root_window = api['root_window'](display, 0)
-    bar = api['create'](display, root_window, 0, height - BAR_HEIGHT, width, BAR_HEIGHT,
-                        1, 0x0b0f16, 0x0b0f16)
+    default_visual = api['default_visual'](display, 0)
+    # Shell chrome is override-redirect: a window manager (openbox manages
+    # application windows) must not reparent, decorate or reposition it.
+    bar_attributes = dev_gui.SetWindowAttributes(
+        border_pixel=0, override_redirect=1,
+        event_mask=(1 << 15) | (1 << 2) | (1 << 3) | (1 << 6))
+    bar = api['create_window'](display, root_window, 0, height - BAR_HEIGHT,
+                               width, BAR_HEIGHT, 0, 0, 1, default_visual,
+                               (1 << 9) | (1 << 11) | (1 << 17),
+                               c.byref(bar_attributes))
     api['store_name'](display, bar, b'Dev OS Shell')
 
     # The menu prefers a 32-bit ARGB visual for true translucency; capture
     # mode stays on the default visual because the test display's XWayland
     # cannot capture ARGB or override-redirect windows.
-    default_visual = api['default_visual'](display, 0)
     info = dev_gui.VisualInfo()
     argb = shots is None and api['match_visual'](display, 0, 32, 4, c.byref(info))
     if argb:
@@ -354,8 +361,12 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     desktop_window = desktop_surface = desktop_cr = None
     if True:                                # always paint over stale pixels
         import dev_background
-        desktop_window = api['create'](display, root_window, 0, 0, width, height,
-                                       1, 0x0b0f16, 0x0b0f16)
+        desktop_attributes = dev_gui.SetWindowAttributes(border_pixel=0,
+                                                         override_redirect=1)
+        desktop_window = api['create_window'](display, root_window, 0, 0,
+                                              width, height, 0, 0, 1, default_visual,
+                                              (1 << 9) | (1 << 17),
+                                              c.byref(desktop_attributes))
         api['store_name'](display, desktop_window, b'Dev OS Desktop')
         set_atoms(desktop_window, '_NET_WM_WINDOW_TYPE', ['_NET_WM_WINDOW_TYPE_DESKTOP'])
         desktop_surface = cairo.surface_create(display, desktop_window,
@@ -840,6 +851,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         geometry = menu_geometry(width, height, len(entries), consent is not None)
         if desktop_window:
             paint_desktop()
+        api['raise_window'](display, bar)     # chrome above WM-managed windows
         tasks = draw_bar()
         if menu_open:
             draw_menu(geometry)
