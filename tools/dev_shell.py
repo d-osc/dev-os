@@ -265,6 +265,20 @@ def toast_layout(messages, now, width, height):
     return cards
 
 
+def network_state(command='ip'):
+    """('online' | 'offline', detail) from the running ip command."""
+    try:
+        listing = subprocess.run([command, '-4', 'addr', 'show', 'scope', 'global'],
+                                 capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        return 'offline', 'no network tool'
+    for line in listing.splitlines():
+        if line.strip().startswith('inet '):
+            address = line.strip().split()[1].split('/')[0]
+            return 'online', address
+    return 'offline', 'no address'
+
+
 def mode_error(mode):
     """None when the shell may run in this system mode, else a message."""
     return None if mode == 'desktop' else \
@@ -588,9 +602,12 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         cairo.stroke(cr_bar)
         draw_icon = dev_theme.draw_icon
         colors = dev_gui.THEME_COLORS
+        state, detail = network_state()
         if not hidden('tray'):
             draw_icon(cairo, cr_bar, dev_gui.ICONS['wifi'], separator - 32, 12,
-                      DESIGN['green'], colors, 1.4)
+                      DESIGN['green'] if state == 'online' else DESIGN['gray'],
+                      colors, 1.4)
+            text(cr_bar, detail, separator - 190, 24, DESIGN['gray'], 9.0)
             draw_icon(cairo, cr_bar, dev_gui.ICONS['volume'], separator - 52, 12,
                       DESIGN['gray'], colors, 1.4)
             draw_icon(cairo, cr_bar, dev_gui.ICONS['bell'], separator - 72, 12,

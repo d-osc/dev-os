@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -51,6 +52,34 @@ class Applications(unittest.TestCase):
             (root / 'var/lib/dev').mkdir(parents=True)
             (root / 'var/lib/dev/installed.json').write_text(json.dumps({'hello': app('hello')}))
             self.assertEqual(list(shell.load_database(root)), ['hello'])
+
+
+class NetworkState(unittest.TestCase):
+    @unittest.skipIf(os.name != 'posix', 'shell-script fake needs POSIX')
+    def test_parses_global_inet_address(self):
+        from pathlib import Path as _Path
+        import tempfile as _tempfile
+        with _tempfile.TemporaryDirectory() as directory:
+            script = _Path(directory) / 'ip'
+            script.write_text(
+                "#!/bin/sh\necho '2: eth0: <BROADCAST,MULTICAST,UP>'\n"
+                "echo '    inet 10.0.2.15/24 brd 10.0.2.255 scope global eth0'\n")
+            script.chmod(0o755)
+            self.assertEqual(shell.network_state(str(script)), ('online', '10.0.2.15'))
+
+    @unittest.skipIf(os.name != 'posix', 'shell-script fake needs POSIX')
+    def test_offline_without_global_address(self):
+        from pathlib import Path as _Path
+        import tempfile as _tempfile
+        with _tempfile.TemporaryDirectory() as directory:
+            script = _Path(directory) / 'ip'
+            script.write_text("#!/bin/sh\necho '2: eth0'\n")
+            script.chmod(0o755)
+            self.assertEqual(shell.network_state(str(script)), ('offline', 'no address'))
+
+    def test_offline_when_tool_missing(self):
+        self.assertEqual(shell.network_state('/nonexistent/ip'),
+                         ('offline', 'no network tool'))
 
 
 class Layout(unittest.TestCase):
