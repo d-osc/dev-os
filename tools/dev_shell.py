@@ -298,17 +298,25 @@ def network_state(command='ip'):
     return 'offline', 'no address'
 
 
-def password_ok(password, sudo='sudo'):
-    """Verify against the real account via sudo -S; never reads shadow."""
+def run_as_root(argv, password, sudo='sudo'):
+    """Run one command as root via sudo -S; never reads shadow."""
     if not password:
         return False
     try:
-        result = subprocess.run([sudo, '-S', '-k', '-u', 'root', 'true'],
-                                input=(password + chr(10)).encode(),
-                                capture_output=True, timeout=5)
+        result = subprocess.run([sudo, '-S', '-k', '-u', 'root'] + list(argv),
+                               input=(password + chr(10)).encode(),
+                               capture_output=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return False
     return result.returncode == 0
+
+
+def password_ok(password, sudo='sudo'):
+    """Verify against the real account via sudo -S; never reads shadow."""
+    return run_as_root(['true'], password, sudo)
+
+
+SUSPEND = ['sh', '-c', 'echo mem > /sys/power/state']
 
 
 def lock_layout(width, height):
@@ -504,6 +512,9 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     system_apps.append({'kind': 'lock', 'name': 'lock', 'label': 'Lock',
                         'comment': 'lock this session', 'categories': ['System'],
                         'permissions': []})
+    system_apps.append({'kind': 'suspend', 'name': 'suspend', 'label': 'Suspend',
+                        'comment': 'lock and suspend to memory',
+                        'categories': ['System'], 'permissions': []})
     entries = apps + system_apps + (host.command_entries() if host else [])
     consent = None
     menu_open = False
@@ -517,6 +528,7 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
     toasts = []
     toast_fifo = None
     locked = [bool(os.environ.get('DEVOS_LOCK'))]
+    lock_mode = ['lock']
     lock_input = ['']
 
     def hidden(section):
@@ -586,9 +598,11 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
         cairo.stroke(lock_cr)
         dev_theme.draw_icon(cairo, lock_cr, dev_gui.ICONS['mark'], lx + 36, ly + 28,
                             DESIGN['green'], dev_gui.THEME_COLORS, 1.5)
-        text(lock_cr, 'Locked', lx + 64, ly + 48, DESIGN['white'], 18.0, True)
-        text(lock_cr, 'Enter your password to unlock', lx + 36, ly + 78,
-             DESIGN['gray'], 11.0)
+        heading = 'Suspending...' if lock_mode[0] == 'suspend' else 'Locked'
+        hint = ('Enter your password to suspend'
+                if lock_mode[0] == 'suspend' else 'Enter your password to unlock')
+        text(lock_cr, heading, lx + 64, ly + 48, DESIGN['white'], 18.0, True)
+        text(lock_cr, hint, lx + 36, ly + 78, DESIGN['gray'], 11.0)
         entry_y = ly + 104
         cairo.set_rgba(lock_cr, *PALETTE['bg'], 1.0)
         cairo.rounded(lock_cr, lx + 32, entry_y, lw - 64, 36,
@@ -990,7 +1004,9 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                 char = buffer.value.decode('ascii', 'ignore')[:1]
                 symbol = keysym.value
                 if symbol == 0xFF0D:                     # Return: verify via sudo
-                    if password_ok(lock_input[0]):
+                    if lock_mode[0] == 'suspend' and run_as_root(SUSPEND, lock_input[0]):
+                        lock_mode[0] = 'lock'      # suspended; still locked
+                    elif password_ok(lock_input[0]):
                         locked[0] = False
                     lock_input[0] = ''
                 elif symbol == 0xFF1B:                    # Escape clears
@@ -1083,7 +1099,8 @@ def run(root, *, dev='dev', shots=None, theme=None, theme_source=None, settings=
                         draw_menu(menu_geometry(width, height, len(items), False))
                     elif index is not None and index >= 0 and not consent:
                         entry = entries[index]
-                        if entry.get('kind') == 'lock':
+                        if entry.get('kind') in ('lock', 'suspend'):
+                            lock_mode[0] = entry['kind']
                             locked[0] = True
                             lock_input[0] = ''
                             open_menu(False)
